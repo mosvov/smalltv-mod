@@ -40,6 +40,9 @@ jobs:
           RUN_STAMP: ${{ github.run_id }}
         run: node .github/scripts/fetch-quotes.mjs
 
+      - name: Verify quote payloads
+        run: node .github/scripts/verify-quotes.mjs
+
       # Publish as a single-commit orphan 'data' branch (force-pushed each run),
       # so the JSON never accumulates history in the main repo.
       - name: Publish to data branch

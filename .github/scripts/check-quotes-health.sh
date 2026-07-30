@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Verify the data branch exists, is recent, and contains every configured quote.
+set -euo pipefail
+
+MAX_AGE_MINUTES="${MAX_AGE_MINUTES:-30}"
+REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY required}"
+
+git fetch --depth=1 origin data
+
+if ! git rev-parse --verify origin/data >/dev/null 2>&1; then
+  echo "::error::data branch does not exist. Run the quotes workflow (workflow_dispatch) to bootstrap."
+  exit 1
+fi
+
+COMMIT_TS=$(git show -s --format=%ct origin/data)
+NOW_TS=$(date +%s)
+AGE_MIN=$(( (NOW_TS - COMMIT_TS) / 60 ))
+
+echo "data branch tip is ${AGE_MIN} minute(s) old (limit: ${MAX_AGE_MINUTES})"
+if [ "$AGE_MIN" -gt "$MAX_AGE_MINUTES" ]; then
+  echo "::error::data branch is stale (${AGE_MIN}m). Check the quotes workflow schedule."
+  exit 1
+fi
+
+WORKDIR=$(mktemp -d)
+trap 'rm -rf "$WORKDIR"' EXIT
+git --work-tree="$WORKDIR" checkout origin/data -- quotes
+
+KEYS=$(node -e "
+  const cfg = require('./quotes-config.json');
+  cfg.symbols.forEach(s => console.log(s.key));
+")
+
+MISSING=()
+while IFS= read -r key; do
+  [ -z "$key" ] && continue
+  if [ ! -f "$WORKDIR/quotes/${key}.json" ]; then
+    MISSING+=("$key")
+  fi
+done <<< "$KEYS"
+
+if [ ${#MISSING[@]} -gt 0 ]; then
+  echo "::error::Missing quote files on data branch: ${MISSING[*]}"
+  exit 1
+fi
+
+KEY_COUNT=$(echo "$KEYS" | grep -c . || true)
+echo "data branch healthy: ${KEY_COUNT} quote file(s), ${AGE_MIN}m old"
