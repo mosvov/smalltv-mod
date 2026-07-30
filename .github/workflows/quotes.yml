@@ -11,6 +11,12 @@ name: quotes
 on:
   schedule:
     - cron: '2,17,32,47 * * * *'   # ~every 15 min, off the top of the hour (cron slips less)
+  push:
+    branches: [ main ]
+    paths:
+      - 'quotes-config.json'
+      - '.github/workflows/quotes.yml'
+      - '.github/scripts/fetch-quotes.mjs'
   workflow_dispatch:
 
 concurrency:
@@ -33,6 +39,9 @@ jobs:
         env:
           RUN_STAMP: ${{ github.run_id }}
         run: node .github/scripts/fetch-quotes.mjs
+
+      - name: Verify quote payloads
+        run: node .github/scripts/verify-quotes.mjs
 
       # Publish as a single-commit orphan 'data' branch (force-pushed each run),
       # so the JSON never accumulates history in the main repo.

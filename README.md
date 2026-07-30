@@ -7,6 +7,8 @@
 <p align="center">
   <a href="https://github.com/mosvov/smalltv-mod/actions/workflows/build.yml"><img src="https://github.com/mosvov/smalltv-mod/actions/workflows/build.yml/badge.svg" alt="Build"></a>
   <a href="https://github.com/mosvov/smalltv-mod/actions/workflows/docs.yml"><img src="https://github.com/mosvov/smalltv-mod/actions/workflows/docs.yml/badge.svg" alt="Docs"></a>
+  <a href="https://github.com/mosvov/smalltv-mod/actions/workflows/quotes.yml"><img src="https://github.com/mosvov/smalltv-mod/actions/workflows/quotes.yml/badge.svg" alt="Quotes"></a>
+  <a href="https://github.com/mosvov/smalltv-mod/actions/workflows/quotes-health.yml"><img src="https://github.com/mosvov/smalltv-mod/actions/workflows/quotes-health.yml/badge.svg" alt="Quotes health"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-WTFPL-blue.svg" alt="License: WTFPL"></a>
   <img src="https://img.shields.io/badge/platform-ESP8266%20%7C%20ESP32--C2%20%7C%20ESP32-informational" alt="ESP8266, ESP32-C2, and ESP32">
 </p>
@@ -52,8 +54,8 @@ The screens in the photos above are each unit's **stock firmware**, not this one
 
 You do not need a toolchain. GitHub Actions builds the images for all four boards.
 
-- Every push: the **Actions** tab, latest `build` run, download the firmware artifact.
-- Tagged releases (`vX.Y.Z`): attached to the [Releases](../../releases) page.
+- Every push to `main`: a [release](https://github.com/mosvov/smalltv-mod/releases) is created or updated automatically from `FW_VERSION` in `src/config.h`, with all firmware binaries attached.
+- Pull requests: the **Actions** tab, latest `build` run, download the firmware artifact.
 
 Or [build it yourself](#building-from-source).
 

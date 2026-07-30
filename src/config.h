@@ -12,11 +12,11 @@
 // Firmware identity
 // ---------------------------------------------------------------------------
 #define FW_NAME     "smalltv-mod"
-#define FW_VERSION  "2.8.2"
+#define FW_VERSION  "2.8.3"
 
 // Project / update references (shown in the web UI; used by the GitHub self-update)
 #define REPO_URL      "https://github.com/mosvov/smalltv-mod"
-#define REPO_OWNER    "giovi321"
+#define REPO_OWNER    "mosvov"
 #define REPO_NAME     "smalltv-mod"
 // Release asset the GitHub self-updater pulls — one app image per target.
 #if defined(SMALLTV_ESP32C2)
