@@ -5,12 +5,19 @@ set -euo pipefail
 MAX_AGE_MINUTES="${MAX_AGE_MINUTES:-30}"
 REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY required}"
 
-git fetch --depth=1 origin data
-
-if ! git rev-parse --verify origin/data >/dev/null 2>&1; then
-  echo "::error::data branch does not exist. Run the quotes workflow (workflow_dispatch) to bootstrap."
+if ! git ls-remote --heads origin data 2>/dev/null | grep -q 'refs/heads/data'; then
+  echo "::warning::data branch does not exist yet."
+  if [ "${AUTO_BOOTSTRAP_QUOTES:-}" = "true" ]; then
+    echo "Triggering quotes workflow to create the data branch..."
+    gh workflow run quotes.yml --repo "$REPO"
+    echo "Bootstrap triggered; health check will pass after quotes completes."
+    exit 0
+  fi
+  echo "::error::data branch does not exist. Run the quotes workflow (Actions → quotes → Run workflow)."
   exit 1
 fi
+
+git fetch --depth=1 origin data
 
 COMMIT_TS=$(git show -s --format=%ct origin/data)
 NOW_TS=$(date +%s)
