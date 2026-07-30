@@ -40,7 +40,8 @@ struct TickerSettings {
   String   range;         // chart timeframe token (e.g. "1d", "5d", "1mo", "1y")
   uint16_t points;        // sparkline points requested
   uint16_t pollSec;       // refresh period
-  uint16_t rotateSec;     // per-symbol on-screen time
+  uint16_t rotateSec;     // per-page on-screen time (single-ticker or multi-tile pages)
+  uint8_t  tilesPerScreen; // 1..6 tickers visible at once; 1 = classic full-screen rotation
   bool     colorInverted; // false: up=green/down=red ; true: swapped
   bool     changeOnRange; // true: change/% over the chart timeframe; false: provider's 1-day change
 
