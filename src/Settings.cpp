@@ -24,6 +24,7 @@ void TickerSettings::setDefaults() {
   points = DEFAULT_POINTS;
   pollSec = DEFAULT_POLL_SEC;
   rotateSec = DEFAULT_ROTATE_SEC;
+  tilesPerScreen = DEFAULT_TILES_PER_SCREEN;
   colorInverted = false;
   changeOnRange = true;
 
@@ -52,6 +53,7 @@ void TickerSettings::toJson(JsonObject o) const {
   o["points"]         = points;
   o["pollSec"]        = pollSec;
   o["rotateSec"]      = rotateSec;
+  o["tilesPerScreen"] = tilesPerScreen;
   o["colorInverted"]  = colorInverted;
   o["changeOnRange"]  = changeOnRange;
   o["showName"]       = showName;
@@ -85,6 +87,7 @@ void TickerSettings::fromJson(JsonObjectConst o) {
   if (o["points"].is<int>())             points = constrain((int)o["points"], 0, MAX_SPARK_POINTS);
   if (o["pollSec"].is<int>())            pollSec = max(10, (int)o["pollSec"]);
   if (o["rotateSec"].is<int>())          rotateSec = max(2, (int)o["rotateSec"]);
+  if (o["tilesPerScreen"].is<int>())     tilesPerScreen = constrain((int)o["tilesPerScreen"], 1, 6);
   if (o["colorInverted"].is<bool>())     colorInverted = o["colorInverted"];
   if (o["changeOnRange"].is<bool>())     changeOnRange = o["changeOnRange"];
 

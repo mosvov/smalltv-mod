@@ -53,6 +53,143 @@ static void fmtPrice(float v, char* out, size_t n) {
   else                snprintf(out, n, "%.6f", v);
 }
 
+// ---- grid layout (N tickers per screen) -----------------------------------
+static void layoutGrid(uint8_t perScreen, uint8_t& cols, uint8_t& rows) {
+  switch (perScreen) {
+    case 2: cols = 1; rows = 2; break;
+    case 3: cols = 1; rows = 3; break;
+    case 4: cols = 2; rows = 2; break;
+    case 5: cols = 2; rows = 3; break;
+    case 6: cols = 2; rows = 3; break;
+    default: cols = 1; rows = 1; break;
+  }
+}
+
+static uint8_t tilesPerScreen(const Settings& s) {
+  uint8_t n = s.ticker.tilesPerScreen;
+  if (n < 1) n = 1;
+  if (n > 6) n = 6;
+  return n;
+}
+
+static uint8_t symbolPages(uint8_t symCount, uint8_t perScreen) {
+  if (symCount == 0) return 0;
+  return (symCount + perScreen - 1) / perScreen;
+}
+
+static void drawPageDots(Arduino_GFX* gfx, uint8_t pageIndex, uint8_t pageCount, int y) {
+  if (pageCount <= 1) return;
+  int total = pageCount * 10 - 4;
+  int x0 = (TFT_WIDTH - total) / 2;
+  for (uint8_t i = 0; i < pageCount; i++)
+    gfx->fillCircle(x0 + i * 10 + 2, y + 3, 2, i == pageIndex ? C_WHITE : C_DGRAY);
+}
+
+// Compact tile for multi-ticker layouts (2..6 per screen).
+static void drawCompactTile(Arduino_GFX* gfx, const StockData& d,
+                            int x, int y, int w, int h,
+                            const Settings& s, bool allowChart) {
+  int pad = 3;
+  int cy = y + 2;
+
+  if (!d.valid) {
+    const char* label = d.symbol[0] ? d.symbol : "----";
+    gfx->setTextSize(1);
+    gfx->setTextColor(C_GRAY);
+    gfx->setCursor(x + pad, cy + (h > 20 ? h / 2 - 4 : 2));
+    gfx->print(label);
+    if (d.error) gfx->fillCircle(x + 4, y + 4, 2, C_RED);
+    return;
+  }
+
+  float chg = 0, pct = 0;
+  bool onRange = false;
+  bool hasChange = stockDisplayChange(d, s.ticker, chg, pct, &onRange);
+  bool up = hasChange ? (chg >= 0) : true;
+  uint16_t upC   = s.ticker.colorInverted ? C_RED : C_GREEN;
+  uint16_t downC = s.ticker.colorInverted ? C_GREEN : C_RED;
+  uint16_t trendC = !hasChange ? C_WHITE : (up ? upC : downC);
+
+  const char* label = d.name[0] ? d.name : d.symbol;
+  if (s.ticker.showName && h >= 28) {
+    char nm[16];
+    strlcpy(nm, label, sizeof(nm));
+    uint8_t nsz = gfxFitSize(nm, w - 2 * pad, h >= 70 ? 2 : 1);
+    gfx->setTextSize(nsz);
+    gfx->setTextColor(C_WHITE);
+    gfx->setCursor(x + pad, cy);
+    gfx->print(nm);
+    cy += 8 * nsz + 2;
+  }
+
+  if (s.ticker.showPrice) {
+    char num[20];
+    fmtPrice(d.price, num, sizeof(num));
+    char line[28];
+    snprintf(line, sizeof(line), "%s%s", d.currency, num);
+    uint8_t psz = gfxFitSize(line, w - 2 * pad, h >= 70 ? 3 : 2);
+    gfx->setTextSize(psz);
+    gfx->setTextColor(C_WHITE);
+    gfx->setCursor(x + pad, cy);
+    gfx->print(line);
+    cy += 8 * psz + 2;
+  }
+
+  if (s.ticker.showChange && hasChange && h >= 36) {
+    char line[24];
+    if (pct != 0 || chg != 0)
+      snprintf(line, sizeof(line), "%+.2f (%+.1f%%)", chg, pct);
+    else
+      snprintf(line, sizeof(line), "%+.2f", chg);
+    gfx->setTextSize(1);
+    gfx->setTextColor(trendC);
+    gfx->setCursor(x + pad, cy);
+    gfx->print(line);
+    cy += 10;
+  }
+
+  if (allowChart && s.ticker.showChart && d.sparkCount >= 2 && (y + h - cy) >= 18) {
+    float livePt = onRange ? d.price : NAN;
+    drawSparkline(gfx, d, cy, y + h - 3, trendC, livePt);
+  }
+
+  if (d.error) gfx->fillCircle(x + 4, y + 4, 2, C_RED);
+}
+
+static void drawMultiStock(uint8_t pageIndex, uint8_t pageCount,
+                           uint8_t symStart, uint8_t symOnPage,
+                           const Settings& s) {
+  Arduino_GFX* gfx = gfxDev();
+  if (!gfx) return;
+  gfx->fillScreen(C_BLACK);
+
+  int y0 = 4;
+  if (s.ticker.showPageDots && pageCount > 1) {
+    drawPageDots(gfx, pageIndex, pageCount, 6);
+    y0 = 20;
+  }
+
+  uint8_t perScreen = tilesPerScreen(s);
+  uint8_t cols, rows;
+  layoutGrid(perScreen, cols, rows);
+
+  const int margin = 2;
+  const int availH = TFT_HEIGHT - y0 - margin;
+  const int availW = TFT_WIDTH - 2 * margin;
+  const int tileW = availW / cols;
+  const int tileH = availH / rows;
+  const bool allowChart = perScreen <= 3;
+
+  for (uint8_t i = 0; i < symOnPage; i++) {
+    uint8_t col = i % cols;
+    uint8_t row = i / cols;
+    int x = margin + col * tileW;
+    int y = y0 + row * tileH;
+    if (row > 0) gfx->drawFastHLine(margin, y, availW, C_DGRAY);
+    drawCompactTile(gfx, stockAt(symStart + i), x, y, tileW, tileH, s, allowChart);
+  }
+}
+
 // ---- one ticker page ------------------------------------------------------
 static void drawStock(const StockData& d, uint8_t pageIndex, uint8_t pageCount,
                       const Settings& s) {
@@ -64,12 +201,7 @@ static void drawStock(const StockData& d, uint8_t pageIndex, uint8_t pageCount,
   if (!d.valid) {
     gfxDrawCentered(d.symbol[0] ? d.symbol : "----", 80, 3, C_WHITE);
     gfxDrawCentered(d.error ? "fetch error" : "loading...", 120, 2, C_GRAY);
-    if (s.ticker.showPageDots) {
-      int total = pageCount * 10 - 4;
-      int x0 = (TFT_WIDTH - total) / 2;
-      for (uint8_t i = 0; i < pageCount; i++)
-        gfx->fillCircle(x0 + i * 10 + 2, 230, 2, i == pageIndex ? C_WHITE : C_DGRAY);
-    }
+    if (s.ticker.showPageDots) drawPageDots(gfx, pageIndex, pageCount, 6);
     return;
   }
 
@@ -86,10 +218,7 @@ static void drawStock(const StockData& d, uint8_t pageIndex, uint8_t pageCount,
 
   // Page dots (top) — a single ticker still gets its one dot
   if (s.ticker.showPageDots) {
-    int total = pageCount * 10 - 4;
-    int x0 = (TFT_WIDTH - total) / 2;
-    for (uint8_t i = 0; i < pageCount; i++)
-      gfx->fillCircle(x0 + i * 10 + 2, y + 3, 2, i == pageIndex ? C_WHITE : C_DGRAY);
+    drawPageDots(gfx, pageIndex, pageCount, 6);
     y += 20;                       // extra breathing room below the dots
   }
 
@@ -212,10 +341,7 @@ static void drawPortfolio(uint8_t pageIndex, uint8_t pageCount, const Settings& 
 
   int y = 6;
   if (s.ticker.showPageDots) {
-    int total = pageCount * 10 - 4;
-    int x0 = (TFT_WIDTH - total) / 2;
-    for (uint8_t i = 0; i < pageCount; i++)
-      gfx->fillCircle(x0 + i * 10 + 2, y + 3, 2, i == pageIndex ? C_WHITE : C_DGRAY);
+    drawPageDots(gfx, pageIndex, pageCount, 6);
     y += 20;
   }
 
@@ -315,6 +441,7 @@ void TickerMode::begin(const Settings& s) {
 void TickerMode::invalidate(const Settings& s) {
   stocksInit(s);
   stocksForceRefresh();
+  curPage_ = 0;
   renderedLastOk_ = 0xFFFFFFFF;
   needRender_ = true;
 }
@@ -333,35 +460,62 @@ void TickerMode::render(const Settings& s) {
     gfxMessage("Set webhook", netIP().c_str(), C_YELLOW);
     return;
   }
-  uint8_t pages = n + (hasPortfolioPage(s) ? 1 : 0);
+
+  uint8_t perScreen = tilesPerScreen(s);
+  uint8_t symPages = symbolPages(n, perScreen);
+  uint8_t pages = symPages + (hasPortfolioPage(s) ? 1 : 0);
+  if (pages == 0) return;
   if (curPage_ >= pages) curPage_ = 0;
-  if (curPage_ >= n) drawPortfolio(curPage_, pages, s);
-  else               drawStock(stockAt(curPage_), curPage_, pages, s);
+
+  if (curPage_ >= symPages) {
+    drawPortfolio(curPage_, pages, s);
+    return;
+  }
+
+  uint8_t symStart = curPage_ * perScreen;
+  uint8_t symOnPage = n - symStart;
+  if (symOnPage > perScreen) symOnPage = perScreen;
+
+  if (perScreen == 1)
+    drawStock(stockAt(symStart), curPage_, pages, s);
+  else
+    drawMultiStock(curPage_, pages, symStart, symOnPage, s);
 }
 
 void TickerMode::service(const Settings& s) {
   stocksService(s);
 
   uint8_t n = stocksCount();
-  uint8_t pages = n + (hasPortfolioPage(s) ? 1 : 0);
+  uint8_t perScreen = tilesPerScreen(s);
+  uint8_t symPages = symbolPages(n, perScreen);
+  uint8_t pages = symPages + (hasPortfolioPage(s) ? 1 : 0);
 
-  // Rotate to the next page (symbols, then the portfolio summary)
+  // Rotate only when there is more than one page (extra symbols or portfolio).
   if (pages > 1 && millis() - lastRotate_ >= (uint32_t)s.ticker.rotateSec * 1000UL) {
     curPage_ = (curPage_ + 1) % pages;
     lastRotate_ = millis();
     needRender_ = true;
   }
 
-  // Re-render when the displayed data changed. The portfolio page watches all
-  // symbols at once via a summed fingerprint of their last-update stamps.
-  if (n > 0 && curPage_ < n) {
-    const StockData& d = stockAt(curPage_);
-    if (d.lastOkMs != renderedLastOk_ || d.error != renderedError_) {
-      needRender_ = true;
-      renderedLastOk_ = d.lastOkMs;
-      renderedError_ = d.error;
+  // Re-render when any symbol on the current view changed.
+  if (n > 0 && curPage_ < symPages) {
+    uint8_t symStart = curPage_ * perScreen;
+    uint8_t symOnPage = n - symStart;
+    if (symOnPage > perScreen) symOnPage = perScreen;
+
+    uint32_t h = 0;
+    bool err = false;
+    for (uint8_t i = 0; i < symOnPage; i++) {
+      const StockData& d = stockAt(symStart + i);
+      h += d.lastOkMs;
+      err |= d.error;
     }
-  } else if (n > 0 && pages > n) {
+    if (h != renderedLastOk_ || err != renderedError_) {
+      needRender_ = true;
+      renderedLastOk_ = h;
+      renderedError_ = err;
+    }
+  } else if (n > 0 && pages > symPages) {
     uint32_t h = 0;
     bool err = false;
     for (uint8_t i = 0; i < n; i++) {

@@ -12,7 +12,7 @@
 // Firmware identity
 // ---------------------------------------------------------------------------
 #define FW_NAME     "smalltv-mod"
-#define FW_VERSION  "2.8.3"
+#define FW_VERSION  "2.9.0"
 
 // Project / update references (shown in the web UI; used by the GitHub self-update)
 #define REPO_URL      "https://github.com/mosvov/smalltv-mod"
@@ -177,6 +177,7 @@
 #define TICKER_RETRY_SEC       12            // fast retry after a failed/skipped fetch
 #define TICKER_RETRY_MAX        4            // consecutive fast retries before backing off
 #define DEFAULT_ROTATE_SEC    10             // how long each symbol is shown
+#define DEFAULT_TILES_PER_SCREEN 1           // tickers shown at once (1 = full-screen rotate)
 #define DEFAULT_RANGE        "1d"            // chart timeframe (e.g. 1d/5d/1mo/1y)
 #define DEFAULT_POINTS        48             // sparkline points requested
 #define DEFAULT_BRIGHTNESS    90             // 0..100 %

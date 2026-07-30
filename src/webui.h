@@ -139,9 +139,19 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
 
  <!-- TICKER (feature) -->
  <section id="ticker" class="tab">
-  <div class="card"><h2>Rotation &amp; data</h2>
-   <div class="row">
-    <div><label>Show each ticker (s)</label><input id="rotateSec" type="number" min="2" max="300"></div>
+  <div class="card"><h2>Layout &amp; data</h2>
+   <label>Tickers per screen</label>
+   <select id="tilesPerScreen" onchange="layoutChanged()">
+    <option value="1">1 — full detail, rotate each</option>
+    <option value="2">2 — stacked</option>
+    <option value="3">3 — stacked</option>
+    <option value="4">4 — 2&times;2 grid</option>
+    <option value="5">5 — 2&times;3 grid</option>
+    <option value="6">6 — 2&times;3 grid</option>
+   </select>
+   <small class="hint" id="layoutHint">Shows multiple tickers at once without swapping between them. Sparklines appear only at 3 or fewer per screen. If you have more tickers than fit, pages rotate on the timer below.</small>
+   <div class="row" id="rotateRow">
+    <div><label id="rotateLabel">Show each ticker (s)</label><input id="rotateSec" type="number" min="2" max="300"></div>
     <div><label>Refresh data (s)</label><input id="pollSec" type="number" min="10" max="3600"></div>
    </div>
    <div class="row">
@@ -178,9 +188,9 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    <div class="chk"><input id="showRangeLabel" type="checkbox"><label>Timeframe label</label></div>
    <div class="chk"><input id="showUpdatedAgo" type="checkbox"><label>"Updated N s ago"</label></div>
    <div class="chk"><input id="showPageDots" type="checkbox"><label>Rotation dots</label></div>
-   <div class="chk"><input id="showPortfolio" type="checkbox"><label>Position P/L &amp; portfolio page</label></div>
+   <div class="chk"><input id="showPortfolio" type="checkbox" onchange="layoutChanged()"><label>Position P/L &amp; portfolio page</label></div>
   </div>
-  <div class="card"><h2>Tickers (rotate on screen)</h2>
+  <div class="card"><h2>Tickers</h2>
    <table id="symTable"></table>
    <button class="btn sec" style="margin-top:10px" onclick="addSym()">+ Add ticker</button>
    <small class="hint" id="symHint"></small>
@@ -308,7 +318,7 @@ document.querySelectorAll('nav button').forEach(function(b){b.onclick=function()
 
 // field groups by their location in the nested config
 var T_TEXT=['webhookUrl','range'];                   // ticker strings
-var T_NUM=['rotateSec','pollSec','points'];          // ticker numbers
+var T_NUM=['rotateSec','pollSec','points','tilesPerScreen'];          // ticker numbers
 var T_BOOL=['showName','showPrice','showChange','showChart','showRangeLabel','showUpdatedAgo','showPageDots','showPortfolio'];
 
 // IANA -> POSIX TZ. The device stores/uses the POSIX rule; this map lives in the
@@ -352,6 +362,14 @@ function hideFeat(name){
 }
 function modeChanged(){if(!$('mode'))return;
  $('carouselRow').style.display=$('mode').value==='carousel'?'block':'none';}
+function symCount(){var n=0;document.querySelectorAll('#symTable tr .s').forEach(function(el){if(el.value.trim())n++});return n}
+function layoutChanged(){
+ var t=parseInt(gv('tilesPerScreen'))||1, n=symCount(), pages=Math.ceil(n/Math.max(1,t))+(gc('showPortfolio')?1:0);
+ var rot=$('rotateRow'); if(rot) rot.style.display=pages>1?'':'none';
+ var lbl=$('rotateLabel'); if(lbl) lbl.textContent=(t===1)?'Show each ticker (s)':'Rotate pages every (s)';
+ var hint=$('layoutHint'); if(hint) hint.textContent=(t===1)
+  ?'Classic mode: one ticker fills the screen and cycles through your list.'
+  :'Shows '+t+' tickers at once. Sparklines appear only at 3 or fewer per screen.'+(pages>1?' Extra tickers (or the portfolio page) rotate on the timer below.':' All tickers fit on one screen — no rotation.');}
 function loadConfig(){return j('/api/config').then(function(c){C=c;
  var f=c.features||{}; ['ticker','usage','radar'].forEach(function(k){if(f[k]===false)hideFeat(k)});
  var t=c.ticker||{}, u=c.usage||{};
@@ -380,7 +398,7 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  T_BOOL.forEach(function(k){sc(k,t[k])});
  sv('colorInverted',t.colorInverted?'true':'false');
  sv('changeOnRange',t.changeOnRange===false?'false':'true');
- renderSyms(t.symbols||[]); symHintFor('yahoo');
+ renderSyms(t.symbols||[]); symHintFor('yahoo'); layoutChanged();
  // usage slice
  sv('usageUrl',u.usageUrl);
  sv('usagePollSec',u.pollSec);
@@ -526,10 +544,10 @@ function addRow(o){var t=$('symTable');var tr=document.createElement('tr');tr.cl
    '<option value="yahoo">Yahoo Finance</option><option value="cash">cash.ch</option><option value="github">GitHub</option><option value="webhook">Webhook</option></select></td>'+
   '<td style="width:58px"><input class="q" type="number" step="any" min="0" placeholder="qty" value="'+(o.qty>0?o.qty:'')+'"></td>'+
   '<td style="width:70px"><input class="c" type="number" step="any" min="0" placeholder="cost" value="'+(o.cost>0?o.cost:'')+'"></td>'+
-  '<td style="width:34px"><button class="btn sec" style="padding:6px 10px" onclick="this.closest(\'tr\').remove()">&times;</button></td>';
+  '<td style="width:34px"><button class="btn sec" style="padding:6px 10px" onclick="this.closest(\'tr\').remove();layoutChanged()">&times;</button></td>';
  tr.querySelector('.src').value=o.source||'yahoo';
  t.appendChild(tr);}
-function addSym(){if(document.querySelectorAll('#symTable tr').length>=8){toast('Max 8');return}addRow({})}
+function addSym(){if(document.querySelectorAll('#symTable tr').length>=8){toast('Max 8');return}addRow({});layoutChanged()}
 
 // airports
 function renderAps(arr){var t=$('apTable');if(!t)return;t.innerHTML='';arr.forEach(addApRow);if(!arr.length)addApRow({})}
