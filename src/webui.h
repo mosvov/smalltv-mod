@@ -69,6 +69,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
  <button data-t="ticker">Ticker</button>
  <button data-t="usage">Usage</button>
  <button data-t="radar">Radar</button>
+ <button data-t="weather">Weather</button>
  <button data-t="update">Update</button>
 </nav>
 <main>
@@ -109,6 +110,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
     <option value="stocks">Stock / crypto ticker</option>
     <option value="usage">Claude usage</option>
     <option value="radar">Plane radar</option>
+    <option value="weather">Weather</option>
     <option value="carousel">Carousel (rotate modes)</option>
    </select>
    <div id="carouselRow">
@@ -116,6 +118,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
     <div class="chk"><input id="carouselTicker" type="checkbox"><label>Ticker</label></div>
     <div class="chk"><input id="carouselUsage" type="checkbox"><label>Claude usage</label></div>
     <div class="chk"><input id="carouselRadar" type="checkbox"><label>Plane radar</label></div>
+    <div class="chk"><input id="carouselWeather" type="checkbox"><label>Weather</label></div>
    </div>
    <small class="hint">Pick the active feature, then configure it in its own tab. Carousel rotates through the ticked features.</small>
   </div>
@@ -279,6 +282,25 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
   </div>
  </section>
 
+ <!-- WEATHER (feature) -->
+ <section id="weather" class="tab">
+  <div class="card"><h2>OpenWeather</h2>
+   <label>API key <span class="muted">(free at openweathermap.org)</span></label>
+   <input id="weatherApiKey" type="password" placeholder="(unchanged)">
+   <label>City</label>
+   <input id="weatherCity" type="text" placeholder="Zurich,CH">
+   <div class="row">
+    <div><label>Units</label>
+     <select id="weatherUnits"><option value="true">°C (metric)</option><option value="false">°F (imperial)</option></select></div>
+    <div><label>Refresh (s)</label><input id="weatherPollSec" type="number" min="300" max="7200"></div>
+   </div>
+   <div class="chk"><input id="weatherShowForecast" type="checkbox"><label>3-day forecast row</label></div>
+   <div class="chk"><input id="weatherShowClock" type="checkbox"><label>Clock (HH:MM, needs NTP)</label></div>
+   <div class="chk"><input id="weatherShowWifi" type="checkbox"><label>WiFi signal dot</label></div>
+   <small class="hint">Uses OpenWeatherMap directly over HTTPS. Poll defaults to 20 minutes (stock cadence). City can include country code, e.g. <code>London,UK</code>.</small>
+  </div>
+ </section>
+
  <!-- UPDATE -->
  <section id="update" class="tab">
   <div class="card"><h2>Update from GitHub</h2>
@@ -371,8 +393,8 @@ var TZMAP={
 function fillTz(){var s=$('tz');if(!s)return;var keys=Object.keys(TZMAP).filter(function(k){return k!==''});
  keys.sort();s.innerHTML='<option value="">UTC</option>'+keys.map(function(k){return '<option value="'+k+'">'+k+'</option>'}).join('');}
 
-var MODEOPT={ticker:'stocks',usage:'usage',radar:'radar'};
-var CAROPT={ticker:'carouselTicker',usage:'carouselUsage',radar:'carouselRadar'};
+var MODEOPT={ticker:'stocks',usage:'usage',radar:'radar',weather:'weather'};
+var CAROPT={ticker:'carouselTicker',usage:'carouselUsage',radar:'carouselRadar',weather:'carouselWeather'};
 function hideFeat(name){
  var b=document.querySelector('nav button[data-t="'+name+'"]'); if(b)b.remove();
  var sec=$(name); if(sec)sec.remove();
@@ -400,7 +422,7 @@ function layoutChanged(){
   ?'Classic mode: one ticker fills the screen and cycles through your list.'
   :'Shows '+t+' tickers at once. Sparklines appear only at 3 or fewer per screen.'+(pages>1?' Extra tickers (or the portfolio page) rotate on the timer below.':' All tickers fit on one screen — no rotation.');}
 function loadConfig(){return j('/api/config').then(function(c){C=c;
- var f=c.features||{}; ['ticker','usage','radar'].forEach(function(k){if(f[k]===false)hideFeat(k)});
+ var f=c.features||{}; ['ticker','usage','radar','weather'].forEach(function(k){if(f[k]===false)hideFeat(k)});
  var t=c.ticker||{}, u=c.usage||{};
  // shared
  ['apSsid','apPass','hostname'].forEach(function(k){$(k).value=c[k]!=null?c[k]:''});
@@ -420,7 +442,7 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  sv('nightLevel',ck.nightLevel!=null?ck.nightLevel:0); $('nlVal')&&($('nlVal').textContent=(ck.nightLevel!=null?ck.nightLevel:0));
  $('mode').value=c.mode||'stocks'; modeChanged();
  sv('carouselSec',c.carouselSec||30);
- sc('carouselTicker',c.carouselTicker!==false); sc('carouselUsage',c.carouselUsage!==false); sc('carouselRadar',c.carouselRadar!==false);
+ sc('carouselTicker',c.carouselTicker!==false); sc('carouselUsage',c.carouselUsage!==false); sc('carouselRadar',c.carouselRadar!==false); sc('carouselWeather',c.carouselWeather!==false);
  // ticker slice
  T_TEXT.forEach(function(k){sv(k,t[k])});
  T_NUM.forEach(function(k){sv(k,t[k])});
@@ -445,6 +467,15 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  sv('radarUiScale',r.uiScale!=null?r.uiScale:1);
  sv('radarMinAlt',r.minAltFt!=null?r.minAltFt:0);
  renderAps(r.airports||[]);
+ // weather slice
+ var w=c.weather||{};
+ sv('weatherCity',w.city);
+ sv('weatherPollSec',w.pollSec);
+ sv('weatherUnits',w.unitsMetric!==false?'true':'false');
+ sc('weatherShowForecast',w.showForecast!==false);
+ sc('weatherShowClock',!!w.showClock);
+ sc('weatherShowWifi',w.showWifi!==false);
+ var wak=$('weatherApiKey'); if(wak) wak.placeholder=w.apiKeySet?'(unchanged)':'';
  var ap=$('apPass'); if(ap)ap.placeholder=c.apPassSet?'(unchanged)':'(open)';
 })}
 
@@ -495,7 +526,7 @@ function radarSrcChanged(){if(!$('radarSource'))return;var d=$('radarSource').va
 function collect(){
  var o={mode:gv('mode'),
   carouselSec:parseInt(gv('carouselSec'))||30,
-  carouselTicker:gc('carouselTicker'), carouselUsage:gc('carouselUsage'), carouselRadar:gc('carouselRadar'),
+  carouselTicker:gc('carouselTicker'), carouselUsage:gc('carouselUsage'), carouselRadar:gc('carouselRadar'), carouselWeather:gc('carouselWeather'),
   brightness:parseInt(gv('brightness'))||0,
   rotation:parseInt(gv('rotation')),
   autoBrightness:gc('autoBrightness'),
@@ -538,6 +569,15 @@ function collect(){
    if(ic)r.airports.push({icao:ic,lat:parseFloat(tr.querySelector('.ala').value)||0,lon:parseFloat(tr.querySelector('.alo').value)||0});
   });
   o.radar=r;
+ }
+ // weather slice
+ if($('weather')){
+  var w={unitsMetric:gv('weatherUnits')==='true',showForecast:gc('weatherShowForecast'),
+   showClock:gc('weatherShowClock'),showWifi:gc('weatherShowWifi')};
+  w.city=gv('weatherCity');
+  w.pollSec=parseInt(gv('weatherPollSec'))||0;
+  var wk=gv('weatherApiKey'); if(wk) w.apiKey=wk;
+  o.weather=w;
  }
  return o;
 }
@@ -622,7 +662,7 @@ function scan(){$('scanList').innerHTML='<div class="muted">Scanning...</div>';
 function loadStatus(){j('/api/status').then(function(s){
  $('dot').className='dot'+(s.connected?' ok':'');
  $('hi').textContent=s.mode==='ap'?'setup mode':(s.ip||'');
- var cn=$('clockNow'); if(cn){var ne=!!(C.clock&&C.clock.nightEnabled)||!!(C.ticker&&C.ticker.showClock);var ns=s.night?'  · night mode active':(s.nightHeld?'  · night mode waiting for NTP':'');cn.textContent=!ne?'Clock: enable night mode or ticker clock overlay':('Clock: '+(s.synced?(s.time||'synced')+(s.tz?' ('+s.tz+')':''):'waiting for NTP...')+ns);}
+ var cn=$('clockNow'); if(cn){var ne=!!(C.clock&&C.clock.nightEnabled)||!!(C.ticker&&C.ticker.showClock)||!!(C.weather&&C.weather.showClock);var ns=s.night?'  · night mode active':(s.nightHeld?'  · night mode waiting for NTP':'');cn.textContent=!ne?'Clock: enable night mode or a clock overlay':('Clock: '+(s.synced?(s.time||'synced')+(s.tz?' ('+s.tz+')':''):'waiting for NTP...')+ns);}
  var fw=$('fwVer'); if(fw)fw.textContent=s.fw+' '+s.version;
  // Surface the result of a boot-time GitHub update (ESP8266) once on first load,
  // so a failure that happened across the reboot is visible even if the original
@@ -645,6 +685,15 @@ function loadStatus(){j('/api/status').then(function(s){
    (t.valid?(t.price+' '+pc):(t.error?'error':'...'))+'</td><td class="muted">'+age+'</td></tr>';});
  h+='</table>';
  $('tickBox').innerHTML=h||'<span class="muted">No tickers configured</span>';
+ var wx=s.weather;
+ if(wx){
+  var wh='<div class="kv"><span class="muted">Weather</span><b style="color:'+
+   (wx.error?'var(--red)':(wx.valid?'var(--acc)':'var(--mut)'))+'">'+
+   (wx.valid?(esc(wx.city||'-')+' '+wx.temp+(C.weather&&C.weather.unitsMetric!==false?'°C':'°F')):(wx.errorMsg||wx.error?'error':'...'))+
+   '</b></div>';
+  if(wx.agoSec!=null) wh+='<div class="kv"><span class="muted">Updated</span><span>'+wx.agoSec+'s ago</span></div>';
+  $('statusBox').innerHTML+=wh;
+ }
 })}
 function kv(k,v){return '<div class="kv"><span class="muted">'+k+'</span><b>'+v+'</b></div>'}
 function fmtUp(s){var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);

@@ -12,7 +12,7 @@
 // Firmware identity
 // ---------------------------------------------------------------------------
 #define FW_NAME     "smalltv-mod"
-#define FW_VERSION  "2.10.0"
+#define FW_VERSION  "2.11.0"
 
 // Project / update references (shown in the web UI; used by the GitHub self-update)
 #define REPO_URL      "https://github.com/mosvov/smalltv-mod"
@@ -61,11 +61,13 @@
 //   1 = Claude usage meter (mascot + 5h/7d usage bars, fed by the daemon/)
 //   2 = plane radar
 //   3 = carousel: rotate through the ticked features on a timer
+//   4 = weather (OpenWeatherMap)
 // ---------------------------------------------------------------------------
 #define MODE_STOCKS    0
 #define MODE_USAGE     1
 #define MODE_RADAR     2
 #define MODE_CAROUSEL  3
+#define MODE_WEATHER   4
 #define DEFAULT_MODE MODE_STOCKS
 #define DEFAULT_CAROUSEL_SEC 30      // per-mode dwell in carousel
 
@@ -83,6 +85,9 @@
 #endif
 #ifndef WITH_RADAR
 #define WITH_RADAR 1
+#endif
+#ifndef WITH_WEATHER
+#define WITH_WEATHER 1
 #endif
 
 // Claude usage mode: once data stops arriving for this long (PC asleep, daemon
@@ -166,6 +171,16 @@
 #define DEFAULT_RADAR_LON       0.0f
 #define DEFAULT_RADAR_RANGE_KM  20
 #define DEFAULT_RADAR_POLL_SEC  10     // >=3 keeps us under the 1 req/s limit
+
+// ---------------------------------------------------------------------------
+// Weather (MODE_WEATHER) — OpenWeatherMap current + 3-day forecast
+// ---------------------------------------------------------------------------
+#define OWM_HOST                 "api.openweathermap.org"
+#define OWM_USER_AGENT           "Mozilla/5.0 (SmallTV)"
+#define MAX_CITY_LEN             48
+#define MAX_WEATHER_DESC         28
+#define WEATHER_FORECAST_DAYS    3
+#define DEFAULT_WEATHER_POLL_SEC 1200    // 20 min (stock cadence)
 
 // ---------------------------------------------------------------------------
 // Defaults (used on first boot / factory reset)

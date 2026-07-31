@@ -272,6 +272,43 @@ void RadarSettings::fromJson(JsonObjectConst o) {
 }
 
 // ===========================================================================
+// Weather slice
+// ===========================================================================
+void WeatherSettings::setDefaults() {
+  apiKey = "";
+  city = "";
+  unitsMetric = true;
+  pollSec = DEFAULT_WEATHER_POLL_SEC;
+  showForecast = true;
+  showClock = false;
+  showWifi = true;
+}
+
+void WeatherSettings::toJson(JsonObject o, bool includeSecrets) const {
+  o["city"] = city;
+  o["unitsMetric"] = unitsMetric;
+  o["pollSec"] = pollSec;
+  o["showForecast"] = showForecast;
+  o["showClock"] = showClock;
+  o["showWifi"] = showWifi;
+  o["apiKeySet"] = apiKey.length() > 0;
+  if (includeSecrets) o["apiKey"] = apiKey;
+}
+
+void WeatherSettings::fromJson(JsonObjectConst o) {
+  if (o["city"].is<const char*>()) city = o["city"].as<String>();
+  if (o["unitsMetric"].is<bool>()) unitsMetric = o["unitsMetric"];
+  if (o["pollSec"].is<int>()) pollSec = max(300, (int)o["pollSec"]);
+  if (o["showForecast"].is<bool>()) showForecast = o["showForecast"];
+  if (o["showClock"].is<bool>()) showClock = o["showClock"];
+  if (o["showWifi"].is<bool>()) showWifi = o["showWifi"];
+  if (o["apiKey"].is<const char*>()) {
+    String k = o["apiKey"].as<String>();
+    if (k.length() > 0) apiKey = k;
+  }
+}
+
+// ===========================================================================
 // Top-level settings
 // ===========================================================================
 void Settings::setDefaults() {
@@ -288,7 +325,7 @@ void Settings::setDefaults() {
 
   mode = DEFAULT_MODE;
   carouselSec = DEFAULT_CAROUSEL_SEC;
-  carouselTicker = carouselUsage = carouselRadar = true;
+  carouselTicker = carouselUsage = carouselRadar = carouselWeather = true;
   httpTimeout = DEFAULT_HTTP_TIMEOUT;
 
   brightness = DEFAULT_BRIGHTNESS;
@@ -299,6 +336,7 @@ void Settings::setDefaults() {
   ticker.setDefaults();
   usage.setDefaults();
   radar.setDefaults();
+  weather.setDefaults();
   clock.setDefaults();
 }
 
@@ -367,11 +405,13 @@ void settingsToJson(const Settings& s, JsonObject root, bool includeSecrets) {
   // Mode + shared HTTP/display
   root["mode"]              = (s.mode == MODE_RADAR)    ? "radar"
                             : (s.mode == MODE_USAGE)    ? "usage"
+                            : (s.mode == MODE_WEATHER)  ? "weather"
                             : (s.mode == MODE_CAROUSEL) ? "carousel" : "stocks";
   root["carouselSec"]       = s.carouselSec;
   root["carouselTicker"]    = s.carouselTicker;
   root["carouselUsage"]     = s.carouselUsage;
   root["carouselRadar"]     = s.carouselRadar;
+  root["carouselWeather"]   = s.carouselWeather;
   root["httpTimeout"]       = s.httpTimeout;
   root["brightness"]        = s.brightness;
   root["autoBrightness"]    = s.autoBrightness;
@@ -382,6 +422,7 @@ void settingsToJson(const Settings& s, JsonObject root, bool includeSecrets) {
   s.ticker.toJson(root["ticker"].to<JsonObject>());
   s.usage.toJson(root["usage"].to<JsonObject>());
   s.radar.toJson(root["radar"].to<JsonObject>());
+  s.weather.toJson(root["weather"].to<JsonObject>(), includeSecrets);
   s.clock.toJson(root["clock"].to<JsonObject>());
 }
 
@@ -433,12 +474,14 @@ void settingsApplyJson(Settings& s, JsonObjectConst root) {
     String m = root["mode"].as<String>();
     s.mode = m.equalsIgnoreCase("radar")    ? MODE_RADAR
            : m.equalsIgnoreCase("usage")    ? MODE_USAGE
+           : m.equalsIgnoreCase("weather")  ? MODE_WEATHER
            : m.equalsIgnoreCase("carousel") ? MODE_CAROUSEL : MODE_STOCKS;
   }
   if (root["carouselSec"].is<int>())      s.carouselSec = constrain((int)root["carouselSec"], 5, 3600);
   if (root["carouselTicker"].is<bool>())  s.carouselTicker = root["carouselTicker"];
   if (root["carouselUsage"].is<bool>())   s.carouselUsage = root["carouselUsage"];
   if (root["carouselRadar"].is<bool>())   s.carouselRadar = root["carouselRadar"];
+  if (root["carouselWeather"].is<bool>()) s.carouselWeather = root["carouselWeather"];
 
   if (root["httpTimeout"].is<int>())        s.httpTimeout = constrain((int)root["httpTimeout"], 1000, 20000);
   if (root["brightness"].is<int>())         s.brightness = constrain((int)root["brightness"], 0, 100);
@@ -455,5 +498,6 @@ void settingsApplyJson(Settings& s, JsonObjectConst root) {
   s.usage.fromJson(u);
   // Radar has no legacy flat layout; only apply when its nested object is present.
   if (root["radar"].is<JsonObjectConst>()) s.radar.fromJson(root["radar"].as<JsonObjectConst>());
+  if (root["weather"].is<JsonObjectConst>()) s.weather.fromJson(root["weather"].as<JsonObjectConst>());
   if (root["clock"].is<JsonObjectConst>()) s.clock.fromJson(root["clock"].as<JsonObjectConst>());
 }

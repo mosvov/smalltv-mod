@@ -10,6 +10,7 @@
 #include "UsageClient.h"
 #include "Clock.h"
 #include "TickerMode.h"
+#include "WeatherClient.h"
 
 // Defined in main.cpp — re-init every mode + force a repaint after a config change.
 extern void appInvalidate();
@@ -49,6 +50,7 @@ static void handleGetConfig() {
   feat["ticker"] = (bool)WITH_TICKER;
   feat["usage"]  = (bool)WITH_USAGE;
   feat["radar"]  = (bool)WITH_RADAR;
+  feat["weather"] = (bool)WITH_WEATHER;
   // Which chip this build runs on (the UI warns about per-chip limitations).
 #if defined(SMALLTV_ESP32C2)
   root["chip"] = "esp32c2";
@@ -104,6 +106,20 @@ static void handleStatus() {
         t["changePct"] = pct;                       // as displayed on the device
         t["basis"] = onRange ? "range" : "day";     // which basis that was
       }
+    }
+  }
+#endif
+#if WITH_WEATHER
+  {
+    const WeatherData& w = weatherData();
+    JsonObject wx = o["weather"].to<JsonObject>();
+    wx["valid"] = w.valid;
+    wx["error"] = w.error;
+    if (w.error && w.errorMsg[0]) wx["errorMsg"] = w.errorMsg;
+    if (w.lastOkMs) wx["agoSec"] = (millis() - w.lastOkMs) / 1000;
+    if (w.valid) {
+      wx["temp"] = w.temp;
+      wx["city"] = w.city[0] ? w.city : S->weather.city;
     }
   }
 #endif
@@ -210,6 +226,9 @@ static void handleImport() {
 static void handleRefresh() {
 #if WITH_TICKER
   stocksForceRefresh();
+#endif
+#if WITH_WEATHER
+  weatherForceRefresh();
 #endif
   server.send(200, "application/json", "{\"ok\":true}");
 }
