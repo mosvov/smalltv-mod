@@ -175,23 +175,25 @@ void setup() {
   settingsBegin();
   loadSettings(g_settings);
 
-  Serial.println("[boot] display");
-  gfxBegin(g_settings);
-  gfxBoot(g_safeMode ? "Crashed" : "SmallTV", FW_VERSION);
+  // GitHub OTA on ESP8266 needs a 16 KB contiguous TLS buffer. Init WiFi first,
+  // run the download before the display stack allocates, then bring the panel up.
+  const bool pendingOta = otaBootRequested();
+
+  if (!pendingOta) {
+    Serial.println("[boot] display");
+    gfxBegin(g_settings);
+    gfxBoot(g_safeMode ? "Crashed" : "SmallTV", FW_VERSION);
+  }
 
   Serial.println("[boot] net");
-  netBegin(g_settings, bootProgress);
-  // Arm SNTP when night mode or an on-screen clock overlay needs it.
+  netBegin(g_settings, pendingOta ? nullptr : bootProgress);
   if (!g_safeMode) clockReapply(g_settings);
 
-  // A GitHub update queued from the web UI runs now, before the features claim
-  // the heap (the download needs a 16 KB TLS buffer that only fits at boot).
-  // On success it reboots into the new image; a no-op stub on the ESP32 targets.
-  if (otaBootRequested()) {
+  if (pendingOta) {
     Serial.println("[boot] github update");
-    gfxBoot("SmallTV", "updating...");
     otaBootUpdate(g_settings);
-    gfxBoot("SmallTV", "update failed");   // still here -> failed; details in the web UI
+    gfxBegin(g_settings);
+    gfxBoot("SmallTV", "update failed");
     delay(1200);
   }
 

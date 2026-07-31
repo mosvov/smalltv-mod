@@ -36,6 +36,6 @@ String otaUpdateFromGitHub(const Settings& s);
 // which update directly). The request and the failure message live in LittleFS
 // so they survive the reboot.
 bool   otaBootRequested();                     // a boot update is queued
-bool   otaRequestBootUpdate(const char* tag);  // queue it (false if storage write failed)
+bool   otaRequestBootUpdate(const char* tag, const char* url);  // queue tag + asset URL
 void   otaBootUpdate(const Settings& s);       // consume the request; reboots on success
 String otaTakeBootResult();                    // last boot attempt's error, "" if none
