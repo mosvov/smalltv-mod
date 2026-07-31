@@ -6,6 +6,20 @@ static WeatherData g_data;
 static uint32_t    g_nextPollMs = 0;
 static uint8_t     g_fetchPhase = 0;   // 0 = current, 1 = forecast
 
+// Probe MFLN once so BearSSL can use the smallest safe RX buffer (ESP8266 heap).
+static uint16_t g_tlsRx = 0;
+
+static void probeTls() {
+#if defined(SMALLTV_ESP8266)
+  if (g_tlsRx) return;
+  if (BearSSL::WiFiClientSecure::probeMaxFragmentLength(OWM_HOST, 443, 512))       g_tlsRx = 512;
+  else if (BearSSL::WiFiClientSecure::probeMaxFragmentLength(OWM_HOST, 443, 1024)) g_tlsRx = 1024;
+  else                                                                             g_tlsRx = 4096;
+#else
+  if (!g_tlsRx) g_tlsRx = 2048;
+#endif
+}
+
 const WeatherData& weatherData()    { return g_data; }
 uint32_t           weatherLastOkMs(){ return g_data.lastOkMs; }
 bool               weatherError()   { return g_data.error; }
@@ -15,6 +29,7 @@ void weatherInit(const Settings& s) {
   g_data.clear();
   g_fetchPhase = 0;
   g_nextPollMs = millis();
+  probeTls();
 }
 
 void weatherForceRefresh() { g_nextPollMs = millis(); g_fetchPhase = 0; }
@@ -63,12 +78,38 @@ static String buildForecastUrl(const Settings& s) {
   return u;
 }
 
-static bool fetchJson(const Settings& s, const String& url, JsonDocument& doc) {
+static bool mapHttpError(int code, JsonObjectConst root) {
+  const char* msg = root["message"].is<const char*>() ? root["message"].as<const char*>() : "";
+  if (code == HTTP_CODE_UNAUTHORIZED || code == 401) {
+    setError("Bad API key");
+    return true;
+  }
+  if (code == HTTP_CODE_NOT_FOUND || code == 404) {
+    setError("Err city!");
+    return true;
+  }
+  if (strstr(msg, "Invalid API") || strstr(msg, "API key"))
+    setError("Bad API key");
+  else if (strstr(msg, "city") || strstr(msg, "City"))
+    setError("Err city!");
+  else
+    setError("API error");
+  return true;
+}
+
+static bool fetchJsonBody(const Settings& s, const String& url, JsonDocument& doc,
+                          JsonDocument* filterDoc) {
   bool https = url.startsWith("https://");
   std::unique_ptr<NetClient> client;
   if (https) {
-    if (ESP.getFreeHeap() < 14000) return false;
-    client.reset(platformMakeSecureClient(2048, nullptr, 512, /*cheapCiphers=*/true));
+    probeTls();
+    const uint32_t needBlock = (uint32_t)g_tlsRx + 1024;
+    if (ESP.getFreeHeap() < 18000 || platformMaxFreeBlock() < needBlock) {
+      setError("Low heap");
+      return false;
+    }
+    // OpenWeather needs modern ECDHE suites — not the static-RSA-only list.
+    client.reset(platformMakeSecureClient(g_tlsRx, nullptr, 512, /*cheapCiphers=*/false));
   } else {
     client.reset(new WiFiClient());
   }
@@ -77,19 +118,31 @@ static bool fetchJson(const Settings& s, const String& url, JsonDocument& doc) {
   http.setTimeout(s.httpTimeout);
   http.setReuse(false);
   http.useHTTP10(true);
-  if (!http.begin(*client, url)) return false;
+  if (!http.begin(*client, url)) {
+    setError("Connect fail");
+    return false;
+  }
   http.addHeader("Accept", "application/json");
   http.setUserAgent(F(OWM_USER_AGENT));
 
   int code = http.GET();
   if (code != HTTP_CODE_OK) {
+    JsonDocument errDoc;
+    (void)deserializeJson(errDoc, http.getStream());
     http.end();
+    mapHttpError(code, errDoc.as<JsonObjectConst>());
     return false;
   }
 
-  DeserializationError err = deserializeJson(doc, http.getStream());
+  DeserializationError err = filterDoc
+      ? deserializeJson(doc, http.getStream(), DeserializationOption::Filter(*filterDoc))
+      : deserializeJson(doc, http.getStream());
   http.end();
-  return !err;
+  if (err) {
+    setError("Parse error");
+    return false;
+  }
+  return true;
 }
 
 static void titleCase(char* s) {
@@ -231,18 +284,18 @@ static bool fetchCurrent(const Settings& s) {
   }
 
   JsonDocument doc;
-  if (!fetchJson(s, buildCurrentUrl(s), doc)) {
-    setError("Fetch failed");
+  if (!fetchJsonBody(s, buildCurrentUrl(s), doc, nullptr)) {
+    if (!g_data.error) setError("Fetch failed");
     return true;
   }
 
   JsonObjectConst root = doc.as<JsonObjectConst>();
+  if (root["cod"].is<int>() && root["cod"].as<int>() != 200) {
+    mapHttpError(root["cod"].as<int>(), root);
+    return true;
+  }
   if (root["message"].is<const char*>()) {
-    const char* msg = root["message"];
-    if (strstr(msg, "city") || strstr(msg, "City"))
-      setError("Err city!");
-    else
-      setError("API error");
+    mapHttpError(0, root);
     return true;
   }
 
@@ -256,8 +309,17 @@ static bool fetchCurrent(const Settings& s) {
 static bool fetchForecast(const Settings& s) {
   if (!s.weather.showForecast) return true;
 
+  JsonDocument filter;
+  JsonObject item = filter["list"][0].to<JsonObject>();
+  item["dt"] = true;
+  item["dt_txt"] = true;
+  JsonObject main = item["main"].to<JsonObject>();
+  main["temp"] = true;
+  main["temp_min"] = true;
+  main["temp_max"] = true;
+
   JsonDocument doc;
-  if (!fetchJson(s, buildForecastUrl(s), doc)) {
+  if (!fetchJsonBody(s, buildForecastUrl(s), doc, &filter)) {
     // Forecast failure is non-fatal if current data is valid.
     return true;
   }

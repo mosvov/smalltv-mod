@@ -115,12 +115,13 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    </select>
    <div id="carouselRow">
     <label>Switch mode every (s)</label><input id="carouselSec" type="number" min="5" max="3600">
+    <label>Include in rotation</label>
     <div class="chk"><input id="carouselTicker" type="checkbox"><label>Ticker</label></div>
     <div class="chk"><input id="carouselUsage" type="checkbox"><label>Claude usage</label></div>
     <div class="chk"><input id="carouselRadar" type="checkbox"><label>Plane radar</label></div>
     <div class="chk"><input id="carouselWeather" type="checkbox"><label>Weather</label></div>
    </div>
-   <small class="hint">Pick the active feature, then configure it in its own tab. Carousel rotates through the ticked features.</small>
+   <small class="hint">Pick one fixed screen above, or choose <strong>Carousel</strong> to rotate through the checked features. Configure each feature in its own tab.</small>
   </div>
   <div class="card"><h2>Screen</h2>
    <label>Brightness: <span id="brVal"></span>%</label>
@@ -297,7 +298,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    <div class="chk"><input id="weatherShowForecast" type="checkbox"><label>3-day forecast row</label></div>
    <div class="chk"><input id="weatherShowClock" type="checkbox"><label>Clock (HH:MM, needs NTP)</label></div>
    <div class="chk"><input id="weatherShowWifi" type="checkbox"><label>WiFi signal dot</label></div>
-   <small class="hint">Uses OpenWeatherMap directly over HTTPS. Poll defaults to 20 minutes (stock cadence). City can include country code, e.g. <code>London,UK</code>.</small>
+   <small class="hint">Uses OpenWeatherMap directly over HTTPS. Poll defaults to 20 minutes (stock cadence). City format: <code>Saint Johns,US</code> or <code>Portland,OR,US</code> if ambiguous. New API keys can take up to 2 hours to activate.</small>
   </div>
  </section>
 
