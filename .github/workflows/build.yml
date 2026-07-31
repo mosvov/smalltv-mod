@@ -10,6 +10,7 @@ on:
 # Release publishing needs write access to create/update tags and assets.
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: build-${{ github.ref }}
@@ -76,6 +77,45 @@ jobs:
         with:
           name: smalltv-mod-firmware
           path: dist/
+
+      - name: Summarize firmware artifacts
+        if: github.event_name == 'pull_request'
+        run: |
+          {
+            echo "## Firmware build"
+            echo ""
+            echo "Download the **smalltv-mod-firmware** artifact from this workflow run."
+            echo ""
+            echo "| File | Size |"
+            echo "|------|------|"
+            for f in dist/*; do
+              [ -f "$f" ] || continue
+              printf '| `%s` | %s |\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment PR with firmware artifacts
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            let body = '## Firmware build\n\n';
+            body += `Workflow run: [${context.runId}](${context.payload.repository.html_url}/actions/runs/${context.runId})\n\n`;
+            body += 'Download the **smalltv-mod-firmware** artifact from the Checks tab on this PR.\n\n';
+            body += '| File | Size |\n|------|------|\n';
+            for (const name of fs.readdirSync('dist').sort()) {
+              const stat = fs.statSync(path.join('dist', name));
+              if (!stat.isFile()) continue;
+              body += `| \`${name}\` | ${(stat.size / 1024).toFixed(1)} KB |\n`;
+            }
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
 
       - name: Read firmware version
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

@@ -2,6 +2,7 @@
 #include <Arduino_GFX_Library.h>
 #include "Gfx.h"
 #include "Net.h"
+#include "Clock.h"
 #include "StockClient.h"
 
 TickerMode g_tickerMode;
@@ -85,6 +86,53 @@ static void drawPageDots(Arduino_GFX* gfx, uint8_t pageIndex, uint8_t pageCount,
     gfx->fillCircle(x0 + i * 10 + 2, y + 3, 2, i == pageIndex ? C_WHITE : C_DGRAY);
 }
 
+static bool dataIsStale(const StockData& d, const TickerSettings& t) {
+  if (!d.lastOkMs) return false;
+  return (millis() - d.lastOkMs) > (uint32_t)t.pollSec * 1000UL;
+}
+
+static bool shouldShowUpdatedAgo(const StockData& d, const TickerSettings& t) {
+  return t.showUpdatedAgo || d.error || dataIsStale(d, t);
+}
+
+static void drawUpdatedAgoAt(Arduino_GFX* gfx, const StockData& d,
+                             int x, int y, const TickerSettings& t) {
+  if (!shouldShowUpdatedAgo(d, t) || !d.lastOkMs) return;
+  uint32_t ago = (millis() - d.lastOkMs) / 1000;
+  char buf[12];
+  if (ago < 100) snprintf(buf, sizeof(buf), "%lus", (unsigned long)ago);
+  else           snprintf(buf, sizeof(buf), "%lum", (unsigned long)(ago / 60));
+  gfx->setTextSize(1);
+  gfx->setTextColor(d.error ? C_RED : C_DGRAY);
+  gfx->setCursor(x, y);
+  gfx->print(buf);
+}
+
+// Optional HH:MM + WiFi strength strip at the top of ticker views.
+static int drawStatusBar(const Settings& s) {
+  if (!s.ticker.showClock && !s.ticker.showWifi) return 0;
+  Arduino_GFX* gfx = gfxDev();
+  if (!gfx) return 0;
+
+  if (s.ticker.showClock) {
+    String hm = clockTimeHm();
+    gfx->setTextSize(1);
+    gfx->setTextColor(hm.length() ? C_GRAY : C_DGRAY);
+    gfx->setCursor(4, 2);
+    gfx->print(hm.length() ? hm.c_str() : "--:--");
+  }
+
+  if (s.ticker.showWifi) {
+    uint16_t c = C_RED;
+    if (netConnected()) {
+      int rssi = netRSSI();
+      c = rssi >= -60 ? C_GREEN : (rssi >= -75 ? C_YELLOW : C_RED);
+    }
+    gfx->fillCircle(TFT_WIDTH - 6, 5, 3, c);
+  }
+  return 14;
+}
+
 // Compact tile for multi-ticker layouts (2..6 per screen).
 static void drawCompactTile(Arduino_GFX* gfx, const StockData& d,
                             int x, int y, int w, int h,
@@ -153,6 +201,9 @@ static void drawCompactTile(Arduino_GFX* gfx, const StockData& d,
     drawSparkline(gfx, d, cy, y + h - 3, trendC, livePt);
   }
 
+  if (shouldShowUpdatedAgo(d, s.ticker) && h >= 44)
+    drawUpdatedAgoAt(gfx, d, x + pad, y + h - 10, s.ticker);
+
   if (d.error) gfx->fillCircle(x + 4, y + 4, 2, C_RED);
 }
 
@@ -163,10 +214,10 @@ static void drawMultiStock(uint8_t pageIndex, uint8_t pageCount,
   if (!gfx) return;
   gfx->fillScreen(C_BLACK);
 
-  int y0 = 4;
+  int y0 = drawStatusBar(s) + 2;
   if (s.ticker.showPageDots && pageCount > 1) {
-    drawPageDots(gfx, pageIndex, pageCount, 6);
-    y0 = 20;
+    drawPageDots(gfx, pageIndex, pageCount, y0 + 2);
+    y0 += 18;
   }
 
   uint8_t perScreen = tilesPerScreen(s);
@@ -197,11 +248,13 @@ static void drawStock(const StockData& d, uint8_t pageIndex, uint8_t pageCount,
   if (!gfx) return;
   gfx->fillScreen(C_BLACK);
 
+  int top = drawStatusBar(s);
+
   // No data yet for this symbol.
   if (!d.valid) {
-    gfxDrawCentered(d.symbol[0] ? d.symbol : "----", 80, 3, C_WHITE);
-    gfxDrawCentered(d.error ? "fetch error" : "loading...", 120, 2, C_GRAY);
-    if (s.ticker.showPageDots) drawPageDots(gfx, pageIndex, pageCount, 6);
+    gfxDrawCentered(d.symbol[0] ? d.symbol : "----", top + 80, 3, C_WHITE);
+    gfxDrawCentered(d.error ? "fetch error" : "loading...", top + 120, 2, C_GRAY);
+    if (s.ticker.showPageDots) drawPageDots(gfx, pageIndex, pageCount, top + 6);
     return;
   }
 
@@ -214,11 +267,11 @@ static void drawStock(const StockData& d, uint8_t pageIndex, uint8_t pageCount,
   uint16_t downC = s.ticker.colorInverted ? C_GREEN : C_RED;
   uint16_t trendC = !hasChange ? C_WHITE : (up ? upC : downC);
 
-  int y = 6;
+  int y = top + 6;
 
   // Page dots (top) — a single ticker still gets its one dot
   if (s.ticker.showPageDots) {
-    drawPageDots(gfx, pageIndex, pageCount, 6);
+    drawPageDots(gfx, pageIndex, pageCount, y);
     y += 20;                       // extra breathing room below the dots
   }
 
@@ -237,7 +290,7 @@ static void drawStock(const StockData& d, uint8_t pageIndex, uint8_t pageCount,
     snprintf(line, sizeof(line), "%s%s", d.currency, num);
     uint8_t sz = gfxFitSize(line, 236, 6);
     int ph = 8 * sz;
-    int py = s.ticker.showName ? 74 : 64;
+    int py = s.ticker.showName ? top + 74 : top + 64;
     gfxDrawCentered(line, py, sz, C_WHITE);   // price stays neutral (not trend-colored)
     y = py + ph + 8;
   }
@@ -294,25 +347,16 @@ static void drawStock(const StockData& d, uint8_t pageIndex, uint8_t pageCount,
     int tw = gfxTextW(d.rangeLabel, sz);
     gfx->setTextSize(sz);
     gfx->setTextColor(C_GRAY);
-    gfx->setCursor(TFT_WIDTH - tw - 4, 4);
+    gfx->setCursor(TFT_WIDTH - tw - 4, top + 4);
     gfx->print(d.rangeLabel);
   }
 
   // Updated-ago (bottom-left)
-  if (s.ticker.showUpdatedAgo && d.lastOkMs) {
-    uint32_t ago = (millis() - d.lastOkMs) / 1000;
-    char buf[12];
-    if (ago < 100) snprintf(buf, sizeof(buf), "%lus", (unsigned long)ago);
-    else           snprintf(buf, sizeof(buf), "%lum", (unsigned long)(ago / 60));
-    gfx->setTextSize(2);
-    gfx->setTextColor(d.error ? C_RED : C_DGRAY);
-    gfx->setCursor(4, 224);
-    gfx->print(buf);
-  }
+  if (shouldShowUpdatedAgo(d, s.ticker))
+    drawUpdatedAgoAt(gfx, d, 4, 224, s.ticker);
 
-  // Stale/error dot (top-left) when last refresh failed but we have old data.
-  // (Top-right now holds the range label.)
-  if (d.error) gfx->fillCircle(6, 6, 3, C_RED);
+  // Stale/error dot when last refresh failed but we have old data.
+  if (d.error) gfx->fillCircle(6, top + 6, 3, C_RED);
 }
 
 // ---- portfolio page --------------------------------------------------------
@@ -339,9 +383,9 @@ static void drawPortfolio(uint8_t pageIndex, uint8_t pageCount, const Settings& 
   if (!gfx) return;
   gfx->fillScreen(C_BLACK);
 
-  int y = 6;
+  int y = drawStatusBar(s) + 6;
   if (s.ticker.showPageDots) {
-    drawPageDots(gfx, pageIndex, pageCount, 6);
+    drawPageDots(gfx, pageIndex, pageCount, y);
     y += 20;
   }
 
@@ -533,4 +577,15 @@ void TickerMode::service(const Settings& s) {
     render(s);
     needRender_ = false;
   }
+}
+
+void TickerMode::nextPage(const Settings& s) {
+  uint8_t n = stocksCount();
+  uint8_t perScreen = tilesPerScreen(s);
+  uint8_t symPages = symbolPages(n, perScreen);
+  uint8_t pages = symPages + (hasPortfolioPage(s) ? 1 : 0);
+  if (pages <= 1) return;
+  curPage_ = (curPage_ + 1) % pages;
+  lastRotate_ = millis();
+  needRender_ = true;
 }

@@ -33,9 +33,11 @@ void TickerSettings::setDefaults() {
   showChange = true;
   showChart = true;
   showRangeLabel = true;
-  showUpdatedAgo = false;
+  showUpdatedAgo = true;
   showPageDots = true;
   showPortfolio = true;   // only visible once a symbol has qty+cost set
+  showClock = false;
+  showWifi = true;
 
   symbolCount = 0;
   for (uint8_t i = 0; i < MAX_SYMBOLS; i++) {
@@ -44,6 +46,7 @@ void TickerSettings::setDefaults() {
     symbols[i].source = DEFAULT_SOURCE;
     symbols[i].qty = 0;
     symbols[i].cost = 0;
+    symbols[i].enabled = true;
   }
 }
 
@@ -64,6 +67,8 @@ void TickerSettings::toJson(JsonObject o) const {
   o["showUpdatedAgo"] = showUpdatedAgo;
   o["showPageDots"]   = showPageDots;
   o["showPortfolio"]  = showPortfolio;
+  o["showClock"]      = showClock;
+  o["showWifi"]       = showWifi;
 
   JsonArray arr = o["symbols"].to<JsonArray>();
   for (uint8_t i = 0; i < symbolCount; i++) {
@@ -73,6 +78,7 @@ void TickerSettings::toJson(JsonObject o) const {
     e["source"] = srcToStr(symbols[i].source);
     e["qty"]    = symbols[i].qty;
     e["cost"]   = symbols[i].cost;
+    e["enabled"] = symbols[i].enabled;
   }
 }
 
@@ -99,6 +105,8 @@ void TickerSettings::fromJson(JsonObjectConst o) {
   if (o["showUpdatedAgo"].is<bool>()) showUpdatedAgo = o["showUpdatedAgo"];
   if (o["showPageDots"].is<bool>())   showPageDots = o["showPageDots"];
   if (o["showPortfolio"].is<bool>())  showPortfolio = o["showPortfolio"];
+  if (o["showClock"].is<bool>())      showClock = o["showClock"];
+  if (o["showWifi"].is<bool>())       showWifi = o["showWifi"];
 
   if (o["symbols"].is<JsonArrayConst>()) {
     JsonArrayConst arr = o["symbols"].as<JsonArrayConst>();
@@ -114,6 +122,7 @@ void TickerSettings::fromJson(JsonObjectConst o) {
                      ? srcFromStr(e["source"].as<String>()) : legacySrc;
       dst.qty  = e["qty"].as<float>();     // absent -> 0
       dst.cost = e["cost"].as<float>();
+      dst.enabled = e["enabled"] | true;
       if (dst.qty < 0)  dst.qty = 0;
       if (dst.cost < 0) dst.cost = 0;
       symbolCount++;

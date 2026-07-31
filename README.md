@@ -8,7 +8,6 @@
   <a href="https://github.com/mosvov/smalltv-mod/actions/workflows/build.yml"><img src="https://github.com/mosvov/smalltv-mod/actions/workflows/build.yml/badge.svg" alt="Build"></a>
   <a href="https://github.com/mosvov/smalltv-mod/actions/workflows/docs.yml"><img src="https://github.com/mosvov/smalltv-mod/actions/workflows/docs.yml/badge.svg" alt="Docs"></a>
   <a href="https://github.com/mosvov/smalltv-mod/actions/workflows/quotes.yml"><img src="https://github.com/mosvov/smalltv-mod/actions/workflows/quotes.yml/badge.svg" alt="Quotes"></a>
-  <a href="https://github.com/mosvov/smalltv-mod/actions/workflows/quotes-health.yml"><img src="https://github.com/mosvov/smalltv-mod/actions/workflows/quotes-health.yml/badge.svg" alt="Quotes health"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-WTFPL-blue.svg" alt="License: WTFPL"></a>
   <img src="https://img.shields.io/badge/platform-ESP8266%20%7C%20ESP32--C2%20%7C%20ESP32-informational" alt="ESP8266, ESP32-C2, and ESP32">
 </p>

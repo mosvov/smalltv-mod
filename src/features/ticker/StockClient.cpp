@@ -13,17 +13,19 @@ static uint8_t  g_retryBurst = 0;   // consecutive fast retries after a failed c
 
 // ---------------------------------------------------------------------------
 void stocksInit(const Settings& s) {
-  g_count = s.ticker.symbolCount;
-  for (uint8_t i = 0; i < g_count; i++) {
-    g_stocks[i].clear();
-    strlcpy(g_stocks[i].symbol, s.ticker.symbols[i].symbol, MAX_SYMBOL_LEN);
-    g_stocks[i].source = s.ticker.symbols[i].source;
-    g_stocks[i].qty  = s.ticker.symbols[i].qty;
-    g_stocks[i].cost = s.ticker.symbols[i].cost;
-    g_stocks[i].userNamed = (s.ticker.symbols[i].name[0] != 0);
-    strlcpy(g_stocks[i].name,
-            g_stocks[i].userNamed ? s.ticker.symbols[i].name : s.ticker.symbols[i].symbol,
+  g_count = 0;
+  for (uint8_t i = 0; i < s.ticker.symbolCount && g_count < MAX_SYMBOLS; i++) {
+    if (!s.ticker.symbols[i].enabled) continue;
+    g_stocks[g_count].clear();
+    strlcpy(g_stocks[g_count].symbol, s.ticker.symbols[i].symbol, MAX_SYMBOL_LEN);
+    g_stocks[g_count].source = s.ticker.symbols[i].source;
+    g_stocks[g_count].qty  = s.ticker.symbols[i].qty;
+    g_stocks[g_count].cost = s.ticker.symbols[i].cost;
+    g_stocks[g_count].userNamed = (s.ticker.symbols[i].name[0] != 0);
+    strlcpy(g_stocks[g_count].name,
+            g_stocks[g_count].userNamed ? s.ticker.symbols[i].name : s.ticker.symbols[i].symbol,
             MAX_NAME_LEN);
+    g_count++;
   }
   g_refreshing = false;
   g_nextPollMs = millis();

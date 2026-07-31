@@ -56,3 +56,24 @@ jobs:
           git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  report-failure:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: failure()
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open tracking issue for quotes failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="quotes workflow failed (run ${GITHUB_RUN_ID})"
+          if gh issue list --search "$TITLE in:title" --state open --json title --jq '.[].title' | grep -qF "$TITLE"; then
+            echo "Open issue already exists."
+            exit 0
+          fi
+          gh issue create \
+            --title "$TITLE" \
+            --body "The [quotes workflow](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) failed. ESP8266 devices using the GitHub quote source may serve stale data until this is fixed."

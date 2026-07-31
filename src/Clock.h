@@ -23,3 +23,4 @@ bool   clockNightActive();                   // night mode is on right now (from
 bool   clockNightHeld();                     // in the window but held off waiting for a fresh NTP sync
 
 String clockTimeStr();                        // "YYYY-MM-DD HH:MM" or "" if unsynced
+String clockTimeHm();                         // "HH:MM" or "" if unsynced

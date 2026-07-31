@@ -76,6 +76,17 @@ Use it the same way as the cash.ch source: set a ticker's source to **GitHub** a
 
 This is the belt-and-suspenders option. On the ESP32 boards the direct cash.ch source is simpler and needs no published file. On the ESP8266 the direct source works too, but GitHub is there if you would rather the device never do the ECDHE handshake at all.
 
+### GitHub quotes stale or missing
+
+If a GitHub-source ticker shows old data or errors:
+
+1. Confirm the listing key is in [`quotes-config.json`](https://github.com/mosvov/smalltv-mod/blob/main/quotes-config.json) on the repo you flash from.
+2. Check the **`quotes`** workflow on GitHub (Actions tab). It runs on a schedule (~every 15 minutes) and publishes JSON to the `data` branch. A failed run opens an issue automatically.
+3. GitHub's schedule can pause for an hour or two on inactive forks; the next successful `quotes` run fixes it — no separate health monitor is needed.
+4. On the device, open **Status** and look at the ticker's **Age** column, or enable **"Updated N s ago"** on screen (it appears automatically when data is older than the poll interval).
+
+Manual refresh: run the **quotes** workflow from the Actions tab, or push a change to `quotes-config.json`.
+
 ## TLS on the ESP8266
 
 HTTPS is RAM-tight on the ESP8266. It works, and the firmware tunes each source to fit (see the cash.ch note above), but the ESP32 boards have more headroom and need none of that tuning. For a webhook on your own LAN, plain HTTP sidesteps the TLS cost entirely and is the most reliable option if you see instability.
