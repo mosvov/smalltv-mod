@@ -114,6 +114,21 @@ struct RadarSettings {
   void fromJson(JsonObjectConst o);
 };
 
+// ---- Weather feature slice (OpenWeatherMap) --------------------------------
+struct WeatherSettings {
+  String   apiKey;
+  String   city;
+  bool     unitsMetric;   // true = °C, false = °F
+  uint16_t pollSec;
+  bool     showForecast;
+  bool     showClock;
+  bool     showWifi;
+
+  void setDefaults();
+  void toJson(JsonObject o, bool includeSecrets) const;
+  void fromJson(JsonObjectConst o);
+};
+
 // ---- Top-level settings ----------------------------------------------------
 struct Settings {
   // --- WiFi station networks (the device joins one of these) ---
@@ -126,11 +141,11 @@ struct Settings {
   String hostname;      // mDNS name => http://<hostname>.local
 
   // --- Active feature ---
-  uint8_t mode;         // MODE_STOCKS / MODE_USAGE / MODE_RADAR / MODE_CAROUSEL
+  uint8_t mode;         // MODE_STOCKS / MODE_USAGE / MODE_RADAR / MODE_CAROUSEL / MODE_WEATHER
 
   // --- Carousel (mode == MODE_CAROUSEL): dwell + which features rotate ---
   uint16_t carouselSec;
-  bool carouselTicker, carouselUsage, carouselRadar;
+  bool carouselTicker, carouselUsage, carouselRadar, carouselWeather;
 
   // --- Shared HTTP / display ---
   uint16_t httpTimeout; // ms
@@ -143,6 +158,7 @@ struct Settings {
   TickerSettings ticker;
   UsageSettings  usage;
   RadarSettings  radar;
+  WeatherSettings weather;
   ClockSettings  clock;
 
   void setDefaults();
