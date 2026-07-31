@@ -359,7 +359,7 @@ void webPortalLoop() {
     OtaLatest r = otaCheckLatest(*S);
     if (!r.ok)         g_updateMsg = "check failed: " + r.error;
     else if (!r.newer) g_updateMsg = "already up to date (" FW_VERSION ")";
-    else if (otaRequestBootUpdate(r.tag.c_str())) {
+    else if (otaRequestBootUpdate(r.tag.c_str(), r.url.c_str())) {
       g_updateMsg = "updating...";
       scheduleReboot(400);
     } else {

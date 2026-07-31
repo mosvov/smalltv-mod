@@ -164,12 +164,37 @@ static const char* OTA_MSG_PATH = "/ota.msg";
 
 bool otaBootRequested() { return LittleFS.exists(OTA_REQ_PATH); }
 
-bool otaRequestBootUpdate(const char* tag) {
+bool otaRequestBootUpdate(const char* tag, const char* url) {
+  if (!url || !url[0]) return false;
   File f = LittleFS.open(OTA_REQ_PATH, "w");
   if (!f) return false;                     // storage full/broken -> caller must not reboot
-  f.print(tag ? tag : "");
+  // JSON so boot can skip a second GitHub API TLS session (saves ~16 KB contiguous heap).
+  JsonDocument doc;
+  doc["t"] = tag ? tag : "";
+  doc["u"] = url;
+  if (serializeJson(doc, f) == 0) { f.close(); LittleFS.remove(OTA_REQ_PATH); return false; }
   f.close();
   return true;
+}
+
+static bool otaReadBootRequest(String& urlOut) {
+  urlOut = "";
+  if (!LittleFS.exists(OTA_REQ_PATH)) return false;
+  File f = LittleFS.open(OTA_REQ_PATH, "r");
+  if (!f) return false;
+  String raw = f.readString();
+  f.close();
+  raw.trim();
+  if (raw.length() == 0) return false;
+
+  if (raw.startsWith("{")) {
+    JsonDocument doc;
+    if (deserializeJson(doc, raw)) return false;
+    urlOut = (const char*)(doc["u"] | "");
+    return urlOut.length() > 0;
+  }
+  // Legacy: tag-only file from older firmware — caller must resolve via GitHub API.
+  return false;
 }
 
 static void otaBootResult(const String& msg) {
@@ -187,19 +212,38 @@ String otaTakeBootResult() {
 }
 
 void otaBootUpdate(const Settings& s) {
+  String assetUrl;
+  const bool haveUrl = otaReadBootRequest(assetUrl);
   LittleFS.remove(OTA_REQ_PATH);            // consume first: one attempt per request
   if (WiFi.status() != WL_CONNECTED) { otaBootResult(F("no WiFi at boot")); return; }
 
-  OtaLatest r = otaCheckLatest(s);          // re-resolve the asset URL fresh
-  if (!r.ok)    { otaBootResult("check failed: " + r.error); return; }
-  if (!r.newer) { otaBootResult(F("already up to date (" FW_VERSION ")")); return; }
+#if defined(SMALLTV_ESP8266)
+  WiFiUDP::stopAll();                       // free UDP socket blocks (mDNS, etc.)
+#endif
 
-  // Honest guard: rx + tx buffers plus BearSSL engine/stack-thunk overhead.
+  // Honest guard BEFORE any TLS: rx + tx buffers plus BearSSL engine/stack-thunk.
   const uint32_t need = 16384 + 512 + 8000;
-  if (ESP.getFreeHeap() < need || ESP.getMaxFreeBlockSize() < 16384 + 1024) {
-    otaBootResult("not enough heap even at boot (" + String(ESP.getFreeHeap()) +
-                  " free, need " + String(need) + ")");
+  const uint32_t needBlock = 16384 + 1024;
+  const uint32_t freeHeap = ESP.getFreeHeap();
+  const uint32_t maxBlock = ESP.getMaxFreeBlockSize();
+  if (freeHeap < need || maxBlock < needBlock) {
+    otaBootResult("not enough heap even at boot (" + String(freeHeap) +
+                  " free, block " + String(maxBlock) + ", need " + String(need) +
+                  "/" + String(needBlock) + " contig)");
     return;
+  }
+
+  if (!haveUrl) {
+    // Legacy queue file (tag only) — must hit GitHub API; may fragment heap afterward.
+    OtaLatest r = otaCheckLatest(s);
+    if (!r.ok)    { otaBootResult("check failed: " + r.error); return; }
+    if (!r.newer) { otaBootResult(F("already up to date (" FW_VERSION ")")); return; }
+    assetUrl = r.url;
+    if (ESP.getMaxFreeBlockSize() < needBlock) {
+      otaBootResult("heap fragmented after check (block " +
+                    String(ESP.getMaxFreeBlockSize()) + ", need " + String(needBlock) + ")");
+      return;
+    }
   }
 
   BearSSL::WiFiClientSecure client;
@@ -213,7 +257,7 @@ void otaBootUpdate(const Settings& s) {
   // and the request was already consumed, so a retry can't boot-loop.
   t_httpUpdate_return ret = HTTP_UPDATE_FAILED;
   for (int attempt = 1; attempt <= 2; attempt++) {
-    ret = ESPhttpUpdate.update(client, r.url);
+    ret = ESPhttpUpdate.update(client, assetUrl);
     if (ret == HTTP_UPDATE_OK || ret == HTTP_UPDATE_NO_UPDATES) break;  // OK reboots; NO_UPDATES is final
     if (attempt < 2) delay(1000);
   }
@@ -225,7 +269,7 @@ void otaBootUpdate(const Settings& s) {
 }
 #else
 bool   otaBootRequested() { return false; }
-bool   otaRequestBootUpdate(const char*) { return false; }
+bool   otaRequestBootUpdate(const char*, const char*) { return false; }
 void   otaBootUpdate(const Settings&) {}
 String otaTakeBootResult() { return String(); }
 #endif
