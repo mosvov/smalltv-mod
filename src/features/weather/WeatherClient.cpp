@@ -104,7 +104,7 @@ static bool fetchJsonBody(const Settings& s, const String& url, JsonDocument& do
   if (https) {
     probeTls();
     const uint32_t needBlock = (uint32_t)g_tlsRx + 1024;
-    if (ESP.getFreeHeap() < 18000 || ESP.getMaxFreeBlockSize() < needBlock) {
+    if (ESP.getFreeHeap() < 18000 || platformMaxFreeBlock() < needBlock) {
       setError("Low heap");
       return false;
     }
