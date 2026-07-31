@@ -17,6 +17,7 @@ struct SymbolCfg {
   uint8_t source;     // SRC_* per ticker (see config.h)
   float   qty;        // position size; 0 = not a position
   float   cost;       // cost basis per unit, in the instrument's currency
+  bool    enabled;    // false = keep in list but hide from screen / skip fetch
 };
 
 // A home-area airport marker (radar feature), configured in the web UI.
@@ -54,6 +55,8 @@ struct TickerSettings {
   bool showUpdatedAgo;
   bool showPageDots;
   bool showPortfolio;   // P/L line on position tickers + portfolio summary page
+  bool showClock;       // HH:MM in top-left when NTP has synced
+  bool showWifi;        // connection strength dot in top-right
 
   SymbolCfg symbols[MAX_SYMBOLS];
   uint8_t   symbolCount;

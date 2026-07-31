@@ -53,6 +53,12 @@ td{padding:6px 4px}
 .bar>div{height:100%;width:0;background:var(--acc2);transition:.2s}
 small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
 .chip{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;letter-spacing:.03em;background:var(--acc2);color:#fff;vertical-align:middle}
+@media (max-width:520px){
+ nav{flex-wrap:wrap}
+ nav button{padding:10px 14px;font-size:15px}
+ .row{flex-direction:column}
+ table.sym-tbl{font-size:12px}
+}
 </style></head>
 <body>
 <header><span id="dot" class="dot"></span><h1>SmallTV</h1><span id="chip" class="chip" style="display:none"></span><span id="hi" class="muted"></span></header>
@@ -133,15 +139,23 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    </div>
    <label>Night brightness: <span id="nlVal"></span>% <span class="muted">(0 = screen off)</span></label>
    <input id="nightLevel" type="range" min="0" max="100" oninput="nlVal.textContent=this.value">
-   <small class="hint">Needs internet once to set the clock over NTP (no on-screen clock, this just drives the schedule). While the window is active it overrides the brightness and auto-brightness above. Times are local to the selected timezone; DST is handled automatically. After a reboot the schedule resumes once the clock re-syncs, so the screen may show normal brightness for a few seconds.</small>
+   <small class="hint">Needs internet once to set the clock over NTP (no on-screen clock unless you enable the ticker clock overlay, this just drives the schedule). While the window is active it overrides the brightness and auto-brightness above. Times are local to the selected timezone; DST is handled automatically. After a reboot the schedule resumes once the clock re-syncs, so the screen may show normal brightness for a few seconds.</small>
   </div>
  </section>
 
  <!-- TICKER (feature) -->
  <section id="ticker" class="tab">
   <div class="card"><h2>Layout &amp; data</h2>
+   <label>Layout preset</label>
+   <select id="layoutPreset" onchange="applyLayoutPreset()">
+    <option value="custom">Custom</option>
+    <option value="classic">Classic — 1-up, full detail</option>
+    <option value="desk">Desk — 4-up grid</option>
+    <option value="minimal">Minimal — 6-up, no chart</option>
+    <option value="portfolio">Portfolio — 1-up + summary page</option>
+   </select>
    <label>Tickers per screen</label>
-   <select id="tilesPerScreen" onchange="layoutChanged()">
+   <select id="tilesPerScreen" onchange="sv('layoutPreset','custom');layoutChanged()">
     <option value="1">1 — full detail, rotate each</option>
     <option value="2">2 — stacked</option>
     <option value="3">3 — stacked</option>
@@ -189,10 +203,15 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    <div class="chk"><input id="showUpdatedAgo" type="checkbox"><label>"Updated N s ago"</label></div>
    <div class="chk"><input id="showPageDots" type="checkbox"><label>Rotation dots</label></div>
    <div class="chk"><input id="showPortfolio" type="checkbox" onchange="layoutChanged()"><label>Position P/L &amp; portfolio page</label></div>
+   <div class="chk"><input id="showClock" type="checkbox"><label>Clock (HH:MM, needs NTP)</label></div>
+   <div class="chk"><input id="showWifi" type="checkbox"><label>WiFi signal dot</label></div>
   </div>
   <div class="card"><h2>Tickers</h2>
-   <table id="symTable"></table>
-   <button class="btn sec" style="margin-top:10px" onclick="addSym()">+ Add ticker</button>
+   <table id="symTable" class="sym-tbl"></table>
+   <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn sec" onclick="addSym()">+ Add ticker</button>
+    <button class="btn sec" onclick="tickerNext()">Skip to next page on device</button>
+   </div>
    <small class="hint" id="symHint"></small>
   </div>
   <div class="card"><h2>cash.ch symbol finder</h2>
@@ -319,7 +338,7 @@ document.querySelectorAll('nav button').forEach(function(b){b.onclick=function()
 // field groups by their location in the nested config
 var T_TEXT=['webhookUrl','range'];                   // ticker strings
 var T_NUM=['rotateSec','pollSec','points','tilesPerScreen'];          // ticker numbers
-var T_BOOL=['showName','showPrice','showChange','showChart','showRangeLabel','showUpdatedAgo','showPageDots','showPortfolio'];
+var T_BOOL=['showName','showPrice','showChange','showChart','showRangeLabel','showUpdatedAgo','showPageDots','showPortfolio','showClock','showWifi'];
 
 // IANA -> POSIX TZ. The device stores/uses the POSIX rule; this map lives in the
 // browser so the firmware carries no tz database (same idea as the cash finder).
@@ -362,7 +381,17 @@ function hideFeat(name){
 }
 function modeChanged(){if(!$('mode'))return;
  $('carouselRow').style.display=$('mode').value==='carousel'?'block':'none';}
-function symCount(){var n=0;document.querySelectorAll('#symTable tr .s').forEach(function(el){if(el.value.trim())n++});return n}
+function symCount(){var n=0;document.querySelectorAll('#symTable tr').forEach(function(tr){
+ var s=tr.querySelector('.s').value.trim(); if(!s) return;
+ var en=tr.querySelector('.en'); if(en&&!en.checked) return; n++;}); return n;}
+function applyLayoutPreset(){
+ var p=gv('layoutPreset'); if(p==='custom'){layoutChanged();return;}
+ if(p==='classic'){sv('tilesPerScreen',1);sc('showChart',true);sc('showPortfolio',true);}
+ else if(p==='desk'){sv('tilesPerScreen',4);sc('showChart',false);sc('showPortfolio',false);}
+ else if(p==='minimal'){sv('tilesPerScreen',6);sc('showChart',false);sc('showPortfolio',false);}
+ else if(p==='portfolio'){sv('tilesPerScreen',1);sc('showChart',true);sc('showPortfolio',true);}
+ layoutChanged();
+}
 function layoutChanged(){
  var t=parseInt(gv('tilesPerScreen'))||1, n=symCount(), pages=Math.ceil(n/Math.max(1,t))+(gc('showPortfolio')?1:0);
  var rot=$('rotateRow'); if(rot) rot.style.display=pages>1?'':'none';
@@ -396,6 +425,8 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  T_TEXT.forEach(function(k){sv(k,t[k])});
  T_NUM.forEach(function(k){sv(k,t[k])});
  T_BOOL.forEach(function(k){sc(k,t[k])});
+ if(t.showWifi===undefined) sc('showWifi',true);
+ sv('layoutPreset','custom');
  sv('colorInverted',t.colorInverted?'true':'false');
  sv('changeOnRange',t.changeOnRange===false?'false':'true');
  renderSyms(t.symbols||[]); symHintFor('yahoo'); layoutChanged();
@@ -481,7 +512,8 @@ function collect(){
   document.querySelectorAll('#symTable tr').forEach(function(tr){
    var s=tr.querySelector('.s').value.trim();
    if(s)t.symbols.push({symbol:s,name:tr.querySelector('.n').value.trim(),source:tr.querySelector('.src').value,
-    qty:parseFloat(tr.querySelector('.q').value)||0,cost:parseFloat(tr.querySelector('.c').value)||0});
+    qty:parseFloat(tr.querySelector('.q').value)||0,cost:parseFloat(tr.querySelector('.c').value)||0,
+    enabled:tr.querySelector('.en').checked});
   });
   o.ticker=t;
  }
@@ -509,7 +541,15 @@ function collect(){
  }
  return o;
 }
-function saveAll(){j('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collect())})
+function saveAll(){
+ var o=collect();
+ if($('ticker')){
+  var t=o.ticker||{}, n=(t.symbols||[]).filter(function(s){return s.enabled!==false}).length;
+  var tiles=t.tilesPerScreen||1, rot=t.rotateSec||30, pages=Math.ceil(n/Math.max(1,tiles))+(t.showPortfolio?1:0);
+  if(tiles===1&&n>=6&&rot>=120) toast('Each symbol shows ~'+Math.round(rot/60)+' min with this rotation');
+  else if(pages>1&&rot>=180) toast('Each page shows '+rot+'s ('+pages+' pages)');
+ }
+ j('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o)})
  .then(function(r){toast(r.reboot?'Saved — rebooting...':'Saved');if(r.reboot)setTimeout(function(){location.reload()},6000);loadStatus()})}
 
 function saveWifi(){
@@ -536,18 +576,30 @@ function scanPick(ssid){var rows=document.querySelectorAll('#wifiTable tr');var 
  tr.querySelector('.ws').value=ssid;tr.querySelector('.wp').focus();}
 
 // symbols
+function moveSym(tr,dir){
+ var tb=$('symTable'); if(!tr||!tb)return;
+ if(dir<0&&tr.previousElementSibling) tb.insertBefore(tr,tr.previousElementSibling);
+ else if(dir>0&&tr.nextElementSibling) tb.insertBefore(tr.nextElementSibling,tr);
+ layoutChanged();
+}
 function renderSyms(arr){var t=$('symTable');if(!t)return;t.innerHTML='';arr.forEach(addRow);if(!arr.length)addRow({})}
 function addRow(o){var t=$('symTable');var tr=document.createElement('tr');tr.className='symrow';
- tr.innerHTML='<td style="width:24%"><input class="s" type="text" placeholder="AAPL" value="'+esc(o.symbol||'')+'"></td>'+
+ var en=o.enabled!==false;
+ tr.innerHTML='<td style="width:28px"><input class="en" type="checkbox"'+(en?' checked':'')+' title="Show on device" onchange="this.closest(\'tr\').style.opacity=this.checked?\'1\':\'0.55\';layoutChanged()"></td>'+
+  '<td style="width:52px"><button type="button" class="btn sec" style="padding:4px 6px" onclick="moveSym(this.closest(\'tr\'),-1)">&#8593;</button>'+
+  '<button type="button" class="btn sec" style="padding:4px 6px" onclick="moveSym(this.closest(\'tr\'),1)">&#8595;</button></td>'+
+  '<td style="width:22%"><input class="s" type="text" placeholder="AAPL" value="'+esc(o.symbol||'')+'"></td>'+
   '<td><input class="n" type="text" placeholder="name" value="'+esc(o.name||'')+'"></td>'+
-  '<td style="width:118px"><select class="src" onchange="symHintFor(this.value)">'+
-   '<option value="yahoo">Yahoo Finance</option><option value="cash">cash.ch</option><option value="github">GitHub</option><option value="webhook">Webhook</option></select></td>'+
-  '<td style="width:58px"><input class="q" type="number" step="any" min="0" placeholder="qty" value="'+(o.qty>0?o.qty:'')+'"></td>'+
-  '<td style="width:70px"><input class="c" type="number" step="any" min="0" placeholder="cost" value="'+(o.cost>0?o.cost:'')+'"></td>'+
+  '<td style="width:100px"><select class="src" onchange="symHintFor(this.value)">'+
+   '<option value="yahoo">Yahoo</option><option value="cash">cash.ch</option><option value="github">GitHub</option><option value="webhook">Webhook</option></select></td>'+
+  '<td style="width:52px"><input class="q" type="number" step="any" min="0" placeholder="qty" value="'+(o.qty>0?o.qty:'')+'"></td>'+
+  '<td style="width:62px"><input class="c" type="number" step="any" min="0" placeholder="cost" value="'+(o.cost>0?o.cost:'')+'"></td>'+
   '<td style="width:34px"><button class="btn sec" style="padding:6px 10px" onclick="this.closest(\'tr\').remove();layoutChanged()">&times;</button></td>';
  tr.querySelector('.src').value=o.source||'yahoo';
+ if(o.enabled===false) tr.style.opacity='0.55';
  t.appendChild(tr);}
 function addSym(){if(document.querySelectorAll('#symTable tr').length>=8){toast('Max 8');return}addRow({});layoutChanged()}
+function tickerNext(){j('/api/ticker/next',{method:'POST'}).then(function(){toast('Next ticker page')})}
 
 // airports
 function renderAps(arr){var t=$('apTable');if(!t)return;t.innerHTML='';arr.forEach(addApRow);if(!arr.length)addApRow({})}
@@ -570,7 +622,7 @@ function scan(){$('scanList').innerHTML='<div class="muted">Scanning...</div>';
 function loadStatus(){j('/api/status').then(function(s){
  $('dot').className='dot'+(s.connected?' ok':'');
  $('hi').textContent=s.mode==='ap'?'setup mode':(s.ip||'');
- var cn=$('clockNow'); if(cn){var ne=!!(C.clock&&C.clock.nightEnabled);var ns=s.night?'  · night mode active':(s.nightHeld?'  · night mode waiting for NTP':'');cn.textContent=!ne?'Clock: NTP runs only when night mode is on':('Clock: '+(s.synced?(s.time||'synced')+(s.tz?' ('+s.tz+')':''):'waiting for NTP...')+ns);}
+ var cn=$('clockNow'); if(cn){var ne=!!(C.clock&&C.clock.nightEnabled)||!!(C.ticker&&C.ticker.showClock);var ns=s.night?'  · night mode active':(s.nightHeld?'  · night mode waiting for NTP':'');cn.textContent=!ne?'Clock: enable night mode or ticker clock overlay':('Clock: '+(s.synced?(s.time||'synced')+(s.tz?' ('+s.tz+')':''):'waiting for NTP...')+ns);}
  var fw=$('fwVer'); if(fw)fw.textContent=s.fw+' '+s.version;
  // Surface the result of a boot-time GitHub update (ESP8266) once on first load,
  // so a failure that happened across the reboot is visible even if the original
@@ -583,11 +635,15 @@ function loadStatus(){j('/api/status').then(function(s){
   kv('Network',s.ssid||'-')+kv('IP',s.ip||'-')+kv('mDNS','http://'+(C.hostname||'smalltv')+'.local')+
   kv('Signal',s.rssi?s.rssi+' dBm':'-')+
   kv('Free heap',s.heap+' B')+kv('Uptime',fmtUp(s.uptime))+kv('Last reset',s.reset||'-');
- var h='';(s.tickers||[]).forEach(function(t){
+ var h='<table class="sym-tbl" style="width:100%"><tr><td class="muted">Symbol</td><td class="muted">Src</td><td class="muted">Price</td><td class="muted">Age</td></tr>';
+ (s.tickers||[]).forEach(function(t){
   var c=t.error?'var(--red)':(t.valid?'var(--acc)':'var(--mut)');
   var pc=t.changePct!=null?(t.changePct>=0?'+':'')+t.changePct.toFixed(2)+'%':'';
-  h+='<div class="kv"><b style="color:'+c+'">'+t.symbol+'</b><span>'+
-   (t.valid?(t.price+'  '+pc):(t.error?'error':'...'))+'</span></div>';});
+  var age=t.agoSec!=null?(t.agoSec<120?t.agoSec+'s':Math.floor(t.agoSec/60)+'m'):'-';
+  if(t.error) age='err';
+  h+='<tr><td><b style="color:'+c+'">'+esc(t.symbol)+'</b></td><td>'+esc(t.source||'-')+'</td><td>'+
+   (t.valid?(t.price+' '+pc):(t.error?'error':'...'))+'</td><td class="muted">'+age+'</td></tr>';});
+ h+='</table>';
  $('tickBox').innerHTML=h||'<span class="muted">No tickers configured</span>';
 })}
 function kv(k,v){return '<div class="kv"><span class="muted">'+k+'</span><b>'+v+'</b></div>'}

@@ -19,6 +19,8 @@ class TickerMode : public DisplayMode {
     lastRotate_ = millis();
   }
 
+  void nextPage(const Settings& s);   // skip to next ticker page from web UI
+
  private:
   void render(const Settings& s);   // draw the current page
 

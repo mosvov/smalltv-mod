@@ -39,12 +39,11 @@ void clockBegin(const Settings& s) {
 }
 
 void clockReapply(const Settings& s) {
-  // SNTP only runs when night mode needs it. Starting the lwIP SNTP client is a
-  // permanent mid-arena heap allocation, and on the memory-tight ESP8266 that can
-  // fragment the largest contiguous block below what the cash.ch TLS handshake
-  // needs (blanking those tickers). So arm on the first enable, re-arm on a
-  // timezone change, and never start it while night mode is off.
-  if (!s.clock.nightEnabled) return;
+  // SNTP only runs when night mode or the on-screen clock needs it. Starting the
+  // lwIP SNTP client is a permanent mid-arena heap allocation, and on the memory-
+  // tight ESP8266 that can fragment the largest contiguous block below what the
+  // cash.ch TLS handshake needs. Arm on first need, re-arm on timezone change.
+  if (!s.clock.nightEnabled && !s.ticker.showClock) return;
   if (!s_ntpStarted || s.clock.tzPosix != s_armedTz) clockBegin(s);
 }
 
@@ -115,5 +114,13 @@ String clockTimeStr() {
   char b[20];
   snprintf(b, sizeof(b), "%04d-%02d-%02d %02d:%02d",
            t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
+  return String(b);
+}
+
+String clockTimeHm() {
+  struct tm t;
+  if (!clockNow(t)) return String();
+  char b[6];
+  snprintf(b, sizeof(b), "%02d:%02d", t.tm_hour, t.tm_min);
   return String(b);
 }

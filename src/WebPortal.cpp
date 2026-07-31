@@ -9,6 +9,7 @@
 #include "StockClient.h"
 #include "UsageClient.h"
 #include "Clock.h"
+#include "TickerMode.h"
 
 // Defined in main.cpp — re-init every mode + force a repaint after a config change.
 extern void appInvalidate();
@@ -91,6 +92,10 @@ static void handleStatus() {
     t["symbol"] = d.symbol;
     t["valid"] = d.valid;
     t["error"] = d.error;
+    t["source"] = (d.source == SRC_YAHOO) ? "yahoo"
+                : (d.source == SRC_CASH)  ? "cash"
+                : (d.source == SRC_GHUB)  ? "github" : "webhook";
+    if (d.lastOkMs) t["agoSec"] = (millis() - d.lastOkMs) / 1000;
     if (d.valid) {
       t["price"] = d.price;
       float chg, pct;
@@ -209,6 +214,13 @@ static void handleRefresh() {
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
+static void handleTickerNext() {
+#if WITH_TICKER
+  g_tickerMode.nextPage(*S);
+#endif
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
 // Check the newest GitHub release against the running version.
 static void handleCheckUpdate() {
   OtaLatest r = otaCheckLatest(*S);
@@ -296,6 +308,7 @@ void webPortalBegin(Settings& settings) {
   server.on("/api/reboot", HTTP_POST, handleReboot);
   server.on("/api/factory", HTTP_POST, handleFactory);
   server.on("/api/refresh", HTTP_POST, handleRefresh);
+  server.on("/api/ticker/next", HTTP_POST, handleTickerNext);
   server.on("/api/export", HTTP_GET, handleExport);
   server.on("/api/import", HTTP_POST, handleImport);
   server.on("/api/checkupdate", HTTP_GET, handleCheckUpdate);
