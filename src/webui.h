@@ -311,7 +311,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
     <button class="btn" style="margin-left:8px" onclick="selfUpdate()" id="ghUpBtn" disabled>Update now</button>
    </div>
    <div id="ghMsg" class="muted" style="margin-top:8px"></div>
-   <small class="hint">Pulls the newest release straight from <a id="repoLink" href="https://github.com/mosvov/smalltv-mod/releases" target="_blank">the GitHub repo</a>. HTTPS OTA is tight on the ESP8266; if it fails, use the manual upload below.</small>
+   <small class="hint">Pulls the newest release from <a id="repoLink" href="https://github.com/mosvov/smalltv-mod/releases" target="_blank">the GitHub repo</a>. On ESP8266 the device reboots twice: once to queue, then download at boot (screen may stay blank 2–3 min). Refresh this page when the device is back. If GitHub update fails, use manual upload below.</small>
   </div>
   <div class="card"><h2>Manual update (OTA)</h2>
    <input id="fw" type="file" accept=".bin">
@@ -710,20 +710,28 @@ function checkUpdate(){$('ghMsg').textContent='Checking GitHub...';$('chkBtn').d
  }).catch(function(){$('chkBtn').disabled=false;$('ghMsg').textContent='Check failed'})}
 function selfUpdate(){if(!confirm('Download and flash the latest release from GitHub? The device reboots if it succeeds.'))return;
  $('ghUpBtn').disabled=true;$('chkBtn').disabled=true;
- $('ghMsg').textContent='Downloading and flashing... this can take a couple of minutes and the device may reboot twice.';
- // Installed version, read synchronously from the already-loaded status so the
- // poller below can recognise success (new version) without racing a fetch.
+ $('ghMsg').textContent='Contacting GitHub…';
  var cur=(($('fwVer').textContent||'').trim().split(' ').pop())||'';
- j('/api/selfupdate',{method:'POST'}).then(function(){
-  var n=0;var t=setInterval(function(){n++;
+ j('/api/selfupdate',{method:'POST'}).then(function(r){
+  if(!r.ok){$('ghMsg').textContent='Update failed: '+(r.error||'unknown');$('chkBtn').disabled=false;$('ghUpBtn').disabled=false;return}
+  if(r.phase==='reboot'){
+   $('ghMsg').textContent='Queued '+r.latest+'. Rebooting — download runs at boot (2–3 min, screen may stay blank). Refresh this page when back online.';
+  }else{
+   $('ghMsg').textContent='Downloading and flashing… device may reboot.';
+  }
+  var fails=0,n=0;
+  var t=setInterval(function(){n++;
    j('/api/status').then(function(s){
-    if(cur&&s.version&&s.version!==cur){clearInterval(t);$('ghMsg').textContent='Updated to '+s.version+'.';$('chkBtn').disabled=false;return}
+    fails=0;
+    if(cur&&s.version&&s.version!==cur){clearInterval(t);$('ghMsg').textContent='Updated to '+s.version+'.';$('chkBtn').disabled=false;$('ghUpBtn').disabled=false;return}
     var m=s.updateMsg||'';
-    if(m&&m!=='starting...'&&m!=='updating...'){clearInterval(t);$('ghMsg').textContent='Update failed: '+m;$('chkBtn').disabled=false}
-   }).catch(function(){});
-   if(n>100)clearInterval(t);
+    if(m&&m!=='starting...'&&m!=='updating...'){clearInterval(t);$('ghMsg').textContent='Update failed: '+m;$('chkBtn').disabled=false;$('ghUpBtn').disabled=false}
+   }).catch(function(){fails++;
+    if(fails>=2)$('ghMsg').textContent='Device rebooting or offline… refresh this page in 2–3 minutes.';
+   });
+   if(n>120){clearInterval(t);$('ghMsg').textContent='Timed out waiting. Refresh the page and check Status for the result.';$('chkBtn').disabled=false;$('ghUpBtn').disabled=false}
   },3000);
- }).catch(function(){$('ghMsg').textContent='Could not start update';$('chkBtn').disabled=false})}
+ }).catch(function(){$('ghMsg').textContent='Could not start update';$('chkBtn').disabled=false;$('ghUpBtn').disabled=false})}
 
 // settings backup
 function importCfg(){var f=$('cfgFile').files[0];if(!f){toast('Pick a config .json first');return}

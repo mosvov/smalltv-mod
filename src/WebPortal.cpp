@@ -253,12 +253,45 @@ static void handleCheckUpdate() {
   sendJson(doc);
 }
 
-// Trigger the self-update. The actual (blocking) download runs from the loop so
-// this response returns first; on success the device reboots into the new image.
+// Trigger the self-update. On ESP8266 the GitHub check + queue runs here so the
+// browser gets a definitive ok/error before the reboot. ESP32 downloads in loop().
 static void handleSelfUpdate() {
+#if defined(SMALLTV_ESP8266)
+  OtaLatest r = otaCheckLatest(*S);
+  JsonDocument doc;
+  JsonObject o = doc.to<JsonObject>();
+  if (!r.ok) {
+    g_updateMsg = "check failed: " + r.error;
+    o["ok"] = false;
+    o["error"] = g_updateMsg;
+    sendJson(doc);
+    return;
+  }
+  if (!r.newer) {
+    g_updateMsg = String(F("already up to date (")) + FW_VERSION + ")";
+    o["ok"] = false;
+    o["error"] = g_updateMsg;
+    sendJson(doc);
+    return;
+  }
+  if (!otaRequestBootUpdate(r.tag.c_str(), r.url.c_str())) {
+    g_updateMsg = F("could not queue update (storage error)");
+    o["ok"] = false;
+    o["error"] = g_updateMsg;
+    sendJson(doc);
+    return;
+  }
+  g_updateMsg = "updating...";
+  scheduleReboot(800);
+  o["ok"] = true;
+  o["phase"] = "reboot";
+  o["latest"] = r.tag;
+  sendJson(doc);
+#else
   g_selfUpdate = true;
   g_updateMsg = "starting...";
   server.send(200, "application/json", "{\"ok\":true}");
+#endif
 }
 
 // Push endpoint: the daemon POSTs the usage payload here when the device can't
@@ -353,18 +386,7 @@ void webPortalLoop() {
   if (g_selfUpdate) {
     g_selfUpdate = false;
 #if defined(SMALLTV_ESP8266)
-    // RAM-tight chip: verify there is something to install, then queue the
-    // download for the next boot (otaBootUpdate in setup(), ~45 KB free) and
-    // reboot. A failure there lands back in g_updateMsg via otaTakeBootResult.
-    OtaLatest r = otaCheckLatest(*S);
-    if (!r.ok)         g_updateMsg = "check failed: " + r.error;
-    else if (!r.newer) g_updateMsg = "already up to date (" FW_VERSION ")";
-    else if (otaRequestBootUpdate(r.tag.c_str(), r.url.c_str())) {
-      g_updateMsg = "updating...";
-      scheduleReboot(400);
-    } else {
-      g_updateMsg = F("could not queue update (storage error)");
-    }
+    // ESP8266 queues + reboots from handleSelfUpdate(); nothing to do here.
 #else
     // ESP32 targets: mbedTLS has the RAM to download in place; blocks while it
     // runs and reboots into the new image on success.
