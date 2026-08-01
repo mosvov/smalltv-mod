@@ -252,6 +252,8 @@ void otaBootUpdate(const Settings& s) {
 
   ESPhttpUpdate.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
   ESPhttpUpdate.rebootOnUpdate(true);
+  // Default is 8 s — far too short for a ~700 KB firmware over TLS.
+  ESPhttpUpdate.setClientTimeout(180000);
 
   // Retry once on a transient stream stall — the buffers are still free at boot
   // and the request was already consumed, so a retry can't boot-loop.
