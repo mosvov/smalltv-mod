@@ -296,7 +296,18 @@ void WeatherSettings::toJson(JsonObject o, bool includeSecrets) const {
 }
 
 void WeatherSettings::fromJson(JsonObjectConst o) {
-  if (o["city"].is<const char*>()) city = o["city"].as<String>();
+  if (o["city"].is<const char*>()) {
+    city = o["city"].as<String>();
+    city.trim();
+    int comma = city.indexOf(',');
+    if (comma >= 0) {
+      String left = city.substring(0, comma);
+      String right = city.substring(comma + 1);
+      left.trim();
+      right.trim();
+      city = left + "," + right;
+    }
+  }
   if (o["unitsMetric"].is<bool>()) unitsMetric = o["unitsMetric"];
   if (o["pollSec"].is<int>()) pollSec = max(300, (int)o["pollSec"]);
   if (o["showForecast"].is<bool>()) showForecast = o["showForecast"];

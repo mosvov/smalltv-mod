@@ -30,6 +30,7 @@
 #endif
 #if WITH_WEATHER
 #include "WeatherMode.h"
+#include "WeatherClient.h"
 #endif
 
 // ---- mode registry --------------------------------------------------------
@@ -174,6 +175,10 @@ void setup() {
   Serial.println("[boot] settings");
   settingsBegin();
   loadSettings(g_settings);
+#if WITH_WEATHER
+  if (g_settings.weather.apiKey.length() >= 8 && g_settings.weather.city.length() >= 2)
+    weatherInit(g_settings);
+#endif
 
   // GitHub OTA on ESP8266 needs a 16 KB contiguous TLS buffer. Init WiFi first,
   // run the download before the display stack allocates, then bring the panel up.
@@ -242,6 +247,12 @@ void loop() {
   // (night override / auto-brightness / manual level).
   clockService(g_settings);
   appApplyBrightness();
+
+#if WITH_WEATHER
+  // Fetch weather whenever configured — not only when Weather is the active screen.
+  if (g_settings.weather.apiKey.length() >= 8 && g_settings.weather.city.length() >= 2)
+    weatherService(g_settings);
+#endif
 
   DisplayMode* m = activeMode(g_settings);
   if (m) m->service(g_settings);
