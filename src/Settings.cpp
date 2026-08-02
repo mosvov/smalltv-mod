@@ -2,7 +2,8 @@
 #include "Platform.h"   // platformChipId() for the unique default hostname
 #include <LittleFS.h>
 
-static const char* CONFIG_PATH = "/config.json";
+static const char* CONFIG_PATH     = "/config.json";
+static const char* CONFIG_TMP_PATH = "/config.tmp";
 
 // ===========================================================================
 // Ticker slice
@@ -377,12 +378,21 @@ bool saveSettings(const Settings& s) {
   JsonDocument doc;
   JsonObject root = doc.to<JsonObject>();
   settingsToJson(s, root, /*includeSecrets=*/true);
+  if (doc.overflowed()) return false;
 
-  File f = LittleFS.open(CONFIG_PATH, "w");
+  LittleFS.remove(CONFIG_TMP_PATH);
+  File f = LittleFS.open(CONFIG_TMP_PATH, "w");
   if (!f) return false;
   bool ok = serializeJson(doc, f) > 0;
   f.close();
-  return ok;
+  if (!ok) { LittleFS.remove(CONFIG_TMP_PATH); return false; }
+
+  LittleFS.remove(CONFIG_PATH);
+  if (!LittleFS.rename(CONFIG_TMP_PATH, CONFIG_PATH)) {
+    LittleFS.remove(CONFIG_TMP_PATH);
+    return false;
+  }
+  return true;
 }
 
 void factoryReset(Settings& s) {

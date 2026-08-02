@@ -31,9 +31,19 @@ static void scheduleReboot(uint32_t inMs) {
 
 // ---------------------------------------------------------------------------
 static void sendJson(JsonDocument& doc, int code = 200) {
-  String out;
-  serializeJson(doc, out);
-  server.send(code, "application/json", out);
+  if (doc.overflowed()) {
+    server.send(500, "application/json", "{\"error\":\"out of memory\"}");
+    return;
+  }
+  const size_t len = measureJson(doc);
+  if (len == 0) {
+    server.send(500, "application/json", "{\"error\":\"empty response\"}");
+    return;
+  }
+  server.sendHeader("Connection", "close");
+  server.setContentLength(len);
+  server.send(code, "application/json", "");
+  serializeJson(doc, server.client());
 }
 
 static void handleRoot() {
@@ -45,6 +55,10 @@ static void handleGetConfig() {
   JsonDocument doc;
   JsonObject root = doc.to<JsonObject>();
   settingsToJson(*S, root, /*includeSecrets=*/false);
+  if (doc.overflowed()) {
+    server.send(500, "application/json", "{\"error\":\"config too large\"}");
+    return;
+  }
   // Which features are compiled in (so a lean build hides the tabs it dropped).
   JsonObject feat = root["features"].to<JsonObject>();
   feat["ticker"] = (bool)WITH_TICKER;

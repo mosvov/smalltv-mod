@@ -24,6 +24,18 @@ static long verNum(const char* v) {
   return (long)a * 10000 + (long)b * 100 + c;
 }
 
+// Apply a minimal JSON filter for the GitHub releases/latest payload. We only
+// need tag_name plus each asset's name and URL — but the firmware .bin is never
+// assets[0] (SHA256SUMS sorts first), so include every slot we might see.
+static void otaReleaseFilter(JsonDocument& filter) {
+  filter["tag_name"] = true;
+  for (int i = 0; i < 10; i++) {
+    JsonObject a = filter["assets"][i].to<JsonObject>();
+    a["name"] = true;
+    a["browser_download_url"] = true;
+  }
+}
+
 OtaLatest otaCheckLatest(const Settings& s) {
   OtaLatest r;
   if (ESP.getFreeHeap() < 20000) { r.error = F("low heap"); return r; }
@@ -77,12 +89,8 @@ OtaLatest otaCheckLatest(const Settings& s) {
         r.error = "HTTP " + String(code);
         retryable = (code >= 500);                            // server-side -> transient
       } else {
-        // Keep only the fields we need; the releases payload is large.
         JsonDocument filter;
-        filter["tag_name"] = true;
-        JsonObject fa = filter["assets"][0].to<JsonObject>();
-        fa["name"] = true;
-        fa["browser_download_url"] = true;
+        otaReleaseFilter(filter);
 
         JsonDocument doc;
         DeserializationError err =
@@ -159,8 +167,9 @@ String otaUpdateFromGitHub(const Settings& s) {
 // reboots; this runs early in setup() with the heap still free. The request is
 // consumed BEFORE the attempt, so a crash or failure can never boot-loop.
 #if defined(SMALLTV_ESP8266)
-static const char* OTA_REQ_PATH = "/ota.req";
-static const char* OTA_MSG_PATH = "/ota.msg";
+static const char* OTA_REQ_PATH    = "/ota.req";
+static const char* OTA_MSG_PATH    = "/ota.msg";
+static const char* OTA_EXPECT_PATH = "/ota.expect";
 
 bool otaBootRequested() { return LittleFS.exists(OTA_REQ_PATH); }
 
@@ -177,7 +186,8 @@ bool otaRequestBootUpdate(const char* tag, const char* url) {
   return true;
 }
 
-static bool otaReadBootRequest(String& urlOut) {
+static bool otaReadBootRequest(String& tagOut, String& urlOut) {
+  tagOut = "";
   urlOut = "";
   if (!LittleFS.exists(OTA_REQ_PATH)) return false;
   File f = LittleFS.open(OTA_REQ_PATH, "r");
@@ -190,10 +200,12 @@ static bool otaReadBootRequest(String& urlOut) {
   if (raw.startsWith("{")) {
     JsonDocument doc;
     if (deserializeJson(doc, raw)) return false;
+    tagOut = (const char*)(doc["t"] | "");
     urlOut = (const char*)(doc["u"] | "");
     return urlOut.length() > 0;
   }
   // Legacy: tag-only file from older firmware — caller must resolve via GitHub API.
+  tagOut = raw;
   return false;
 }
 
@@ -202,7 +214,35 @@ static void otaBootResult(const String& msg) {
   if (f) { f.print(msg); f.close(); }
 }
 
+static void otaWriteExpect(const char* tag) {
+  if (!tag || !tag[0]) return;
+  File f = LittleFS.open(OTA_EXPECT_PATH, "w");
+  if (f) { f.print(tag); f.close(); }
+}
+
+static void otaClearExpect() { LittleFS.remove(OTA_EXPECT_PATH); }
+
+// After a successful boot-time flash the device reboots before otaBootResult runs.
+// ota.expect records the target tag so the next boot can confirm the version.
+static void otaFinalizeExpect() {
+  if (!LittleFS.exists(OTA_EXPECT_PATH)) return;
+  File f = LittleFS.open(OTA_EXPECT_PATH, "r");
+  String tag = f ? f.readString() : String();
+  if (f) f.close();
+  LittleFS.remove(OTA_EXPECT_PATH);
+  tag.trim();
+  if (!tag.length()) return;
+
+  String ver = tag;
+  if (ver.startsWith("v") || ver.startsWith("V")) ver.remove(0, 1);
+  if (verNum(FW_VERSION) >= verNum(ver.c_str()))
+    otaBootResult(String(F("updated to ")) + FW_VERSION);
+  else
+    otaBootResult("update incomplete: still " + String(FW_VERSION) + ", expected " + tag);
+}
+
 String otaTakeBootResult() {
+  otaFinalizeExpect();
   if (!LittleFS.exists(OTA_MSG_PATH)) return String();
   File f = LittleFS.open(OTA_MSG_PATH, "r");
   String m = f ? f.readString() : String();
@@ -212,8 +252,8 @@ String otaTakeBootResult() {
 }
 
 void otaBootUpdate(const Settings& s) {
-  String assetUrl;
-  const bool haveUrl = otaReadBootRequest(assetUrl);
+  String tag, assetUrl;
+  const bool haveUrl = otaReadBootRequest(tag, assetUrl);
   LittleFS.remove(OTA_REQ_PATH);            // consume first: one attempt per request
   if (WiFi.status() != WL_CONNECTED) { otaBootResult(F("no WiFi at boot")); return; }
 
@@ -238,6 +278,7 @@ void otaBootUpdate(const Settings& s) {
     OtaLatest r = otaCheckLatest(s);
     if (!r.ok)    { otaBootResult("check failed: " + r.error); return; }
     if (!r.newer) { otaBootResult(F("already up to date (" FW_VERSION ")")); return; }
+    tag = r.tag;
     assetUrl = r.url;
     if (ESP.getMaxFreeBlockSize() < needBlock) {
       otaBootResult("heap fragmented after check (block " +
@@ -245,6 +286,8 @@ void otaBootUpdate(const Settings& s) {
       return;
     }
   }
+
+  if (tag.length()) otaWriteExpect(tag.c_str());
 
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
@@ -263,11 +306,12 @@ void otaBootUpdate(const Settings& s) {
     if (ret == HTTP_UPDATE_OK || ret == HTTP_UPDATE_NO_UPDATES) break;  // OK reboots; NO_UPDATES is final
     if (attempt < 2) delay(1000);
   }
+  otaClearExpect();
   if (ret == HTTP_UPDATE_NO_UPDATES)
     otaBootResult(F("server reported no update"));
   else if (ret != HTTP_UPDATE_OK)
     otaBootResult("download failed: " + ESPhttpUpdate.getLastErrorString());
-  // HTTP_UPDATE_OK: rebootOnUpdate restarts into the new image
+  // HTTP_UPDATE_OK: rebootOnUpdate restarts into the new image; ota.expect survives
 }
 #else
 bool   otaBootRequested() { return false; }
