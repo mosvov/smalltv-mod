@@ -16,6 +16,9 @@ struct WeatherData {
   uint32_t lastOkMs;
 
   char  city[MAX_CITY_LEN];
+  char  iconCode[4];      // OpenWeather icon id, e.g. "01d"
+  float lat;
+  float lon;
   float temp;
   float feelsLike;
   float tempMin;
@@ -33,6 +36,8 @@ struct WeatherData {
     errorMsg[0] = 0;
     lastOkMs = 0;
     city[0] = 0;
+    iconCode[0] = 0;
+    lat = lon = 0;
     temp = feelsLike = tempMin = tempMax = wind = 0;
     humidity = 0;
     description[0] = 0;

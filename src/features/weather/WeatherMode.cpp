@@ -4,6 +4,7 @@
 #include "Net.h"
 #include "Clock.h"
 #include "WeatherClient.h"
+#include "WeatherIcons.h"
 
 WeatherMode g_weatherMode;
 
@@ -67,20 +68,23 @@ void WeatherMode::render(const Settings& s) {
   bool metric = s.weather.unitsMetric;
   char buf[32];
 
-  gfxDrawCentered(d.city[0] ? d.city : s.weather.city.c_str(), y0 + 4, 2, C_WHITE);
+  gfxDrawCentered(d.city[0] ? d.city : s.weather.city.c_str(), y0 + 2, 2, C_WHITE);
+
+  if (d.iconCode[0])
+    weatherDrawIcon(gfx, d.iconCode, TFT_WIDTH / 2, y0 + 34, 14);
 
   snprintf(buf, sizeof(buf), "%.0f%s", d.temp, metric ? "°C" : "°F");
-  gfxDrawCentered(buf, y0 + 28, 4, C_WHITE);
+  gfxDrawCentered(buf, y0 + 56, 4, C_WHITE);
 
   if (d.description[0])
-    gfxDrawCentered(d.description, y0 + 72, 1, C_GRAY);
+    gfxDrawCentered(d.description, y0 + 96, 1, C_GRAY);
 
   snprintf(buf, sizeof(buf), "H:%.0f L:%.0f  %u%%",
            d.tempMax, d.tempMin, (unsigned)d.humidity);
-  gfxDrawCentered(buf, y0 + 88, 1, C_DGRAY);
+  gfxDrawCentered(buf, y0 + 112, 1, C_DGRAY);
 
   if (s.weather.showForecast && d.forecastCount > 0) {
-    int fy = y0 + 108;
+    int fy = y0 + 132;
     gfx->drawFastHLine(12, fy, TFT_WIDTH - 24, C_DGRAY);
     fy += 8;
 
