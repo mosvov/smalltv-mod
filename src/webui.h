@@ -709,8 +709,9 @@ function loadStatus(){j('/api/status').then(function(s){
  $('tickBox').innerHTML=h||'<span class="muted">No tickers configured</span>';
  var wx=s.weather;
  if(wx){
-  var wtxt=wx.valid?(esc(wx.city||'-')+' '+wx.temp+(C.weather&&C.weather.unitsMetric!==false?'°C':'°F'):
-   (wx.errorMsg?esc(wx.errorMsg):(wx.error?'error':'waiting…'));
+  var unit=(C.weather&&C.weather.unitsMetric!==false)?'°C':'°F';
+  var wtxt=wx.valid?(esc(wx.city||'-')+' '+wx.temp+unit):
+   (wx.errorMsg?esc(wx.errorMsg):(wx.error?'error':'waiting...'));
   var wh='<div class="kv"><span class="muted">Weather</span><b style="color:'+
    (wx.error?'var(--red)':(wx.valid?'var(--acc)':'var(--mut)'))+'">'+wtxt+'</b></div>';
   if(wx.agoSec!=null) wh+='<div class="kv"><span class="muted">Updated</span><span>'+wx.agoSec+'s ago</span></div>';
