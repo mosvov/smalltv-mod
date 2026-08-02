@@ -349,6 +349,23 @@ static const char* weekdayLabel(int wday) {
   return d[wday];
 }
 
+static int wdayFromYmd(int y, int mo, int d) {
+  struct tm tm = {};
+  tm.tm_year = y - 1900;
+  tm.tm_mon = mo - 1;
+  tm.tm_mday = d;
+  mktime(&tm);
+  return tm.tm_wday;
+}
+
+static int todayDateKey() {
+  time_t now = time(nullptr);
+  if (now <= 0) return 0;
+  struct tm tm;
+  localtime_r(&now, &tm);
+  return (tm.tm_year + 1900) * 10000 + (tm.tm_mon + 1) * 100 + tm.tm_mday;
+}
+
 static void parseForecast(JsonArrayConst list) {
   g_data.forecastCount = 0;
   if (list.isNull()) return;
@@ -388,14 +405,7 @@ static void parseForecast(JsonArrayConst list) {
       buckets[idx].hi = tmax;
       buckets[idx].lo = tmin;
       buckets[idx].used = true;
-      time_t ts = item["dt"] | 0;
-      struct tm tm;
-      if (ts > 0) {
-        localtime_r(&ts, &tm);
-        buckets[idx].wday = tm.tm_wday;
-      } else {
-        buckets[idx].wday = 0;
-      }
+      buckets[idx].wday = wdayFromYmd(y, mo, d);
     } else {
       if (tmax > buckets[idx].hi) buckets[idx].hi = tmax;
       if (tmin < buckets[idx].lo) buckets[idx].lo = tmin;
@@ -414,7 +424,9 @@ static void parseForecast(JsonArrayConst list) {
   }
 
   uint8_t out = 0;
+  const int todayKey = todayDateKey();
   for (uint8_t i = 0; i < bucketCount && out < WEATHER_FORECAST_DAYS; i++) {
+    if (todayKey > 0 && buckets[i].key == todayKey) continue;
     strlcpy(g_data.forecast[out].label, weekdayLabel(buckets[i].wday), 4);
     g_data.forecast[out].hi = buckets[i].hi;
     g_data.forecast[out].lo = buckets[i].lo;

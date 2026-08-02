@@ -306,7 +306,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    <div class="chk"><input id="weatherShowForecast" type="checkbox"><label>3-day forecast row</label></div>
    <div class="chk"><input id="weatherShowClock" type="checkbox"><label>Clock (HH:MM, needs NTP)</label></div>
    <div class="chk"><input id="weatherShowWifi" type="checkbox"><label>WiFi signal dot</label></div>
-   <small class="hint">Uses OpenWeatherMap directly over HTTPS. US cities: <code>City,ST,US</code> (e.g. <code>Saint Johns,FL,US</code>), international: <code>Zurich,CH</code>, or coordinates <code>30.33,-81.65</code>. <a href="https://openweathermap.org/find" target="_blank" rel="noopener">Search your city on OpenWeather</a> to confirm spelling and format. Re-enter the API key if you change accounts. New keys can take up to 2 hours to activate.</small>
+   <small class="hint">Uses OpenWeatherMap directly over HTTPS. US cities: <code>City,ST,US</code> (e.g. <code>Saint Johns,FL,US</code>), international: <code>Zurich,CH</code>, or coordinates <code>30.33,-81.65</code>. <a id="owmFindLink" href="https://openweathermap.org/find" target="_blank" rel="noopener">Search your city on OpenWeather</a> to confirm spelling and format. Re-enter the API key if you change accounts. New keys can take up to 2 hours to activate.</small>
   </div>
  </section>
 
@@ -497,6 +497,8 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  sc('weatherShowClock',!!w.showClock);
  sc('weatherShowWifi',w.showWifi!==false);
  var wak=$('weatherApiKey'); if(wak) wak.placeholder=w.apiKeySet?'(unchanged)':'';
+ syncOwmFindLink();
+ var wc=$('weatherCity'); if(wc&&!wc._owmHook){wc._owmHook=1;wc.addEventListener('input',syncOwmFindLink);}
  var ap=$('apPass'); if(ap)ap.placeholder=c.apPassSet?'(unchanged)':'(open)';
 }).catch(function(e){
  C=C||{};
@@ -735,6 +737,19 @@ function fmtUp(s){var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.fl
  return (d?d+'d ':'')+(h?h+'h ':'')+m+'m'}
 function refreshNow(){j('/api/refresh',{method:'POST'}).then(function(){toast('Refreshing...');setTimeout(loadStatus,1500)})}
 
+function owmFindUrl(city){
+ if(!city) return 'https://openweathermap.org/find';
+ var parts=city.trim().split(',').map(function(p){return p.trim();}).filter(Boolean);
+ var q=parts.join(', ');
+ return 'https://openweathermap.org/find?q='+q.replace(/ /g,'+');
+}
+
+function syncOwmFindLink(){
+ var lnk=$('owmFindLink');
+ var city=gv('weatherCity');
+ if(lnk&&city) lnk.href=owmFindUrl(city);
+}
+
 function updateWeatherLocStatus(s){
  var box=$('weatherLocStatus'); if(!box) return;
  var wx=s&&s.weather;
@@ -742,7 +757,7 @@ function updateWeatherLocStatus(s){
  if(!cfg){box.textContent='Enter a city above';return;}
  if(!wx){box.textContent='Save settings, then check location';return;}
  if(wx.error){
-  box.innerHTML='<span style="color:var(--red)">'+esc(wx.errorMsg||'error')+'</span> — try <a href="https://openweathermap.org/find?q='+encodeURIComponent(cfg)+'" target="_blank" rel="noopener">openweathermap.org/find</a>';
+  box.innerHTML='<span style="color:var(--red)">'+esc(wx.errorMsg||'error')+'</span> — try <a href="'+esc(owmFindUrl(cfg))+'" target="_blank" rel="noopener">openweathermap.org/find</a>';
   return;
  }
  if(!wx.valid){box.textContent='Waiting for weather data…';return;}
@@ -753,27 +768,39 @@ function updateWeatherLocStatus(s){
  var cfgName=cfg.split(',')[0].trim().toLowerCase();
  var resName=(wx.city||'').toLowerCase();
  var warn=(cfgName&&resName&&cfgName.indexOf(resName)<0&&resName.indexOf(cfgName)<0)
-  ? '<br><span style="color:var(--yellow)">Resolved city differs from what you entered — add state/country, e.g. City,FL,US or use coordinates from <a href="https://openweathermap.org/find?q='+encodeURIComponent(cfg)+'" target="_blank" rel="noopener">OpenWeather Find</a>.</span>' : '';
+  ? '<br><span style="color:var(--yellow)">Resolved city differs — add state/country (City,FL,US) or use coordinates from <a href="'+esc(owmFindUrl(cfg))+'" target="_blank" rel="noopener">OpenWeather Find</a>.</span>' : '';
  box.innerHTML=icon+'<b>'+resolved+'</b>'+coords+desc+warn;
 }
 
 function checkWeatherLoc(){
- var btn=$('weatherLocBtn'); if(btn) btn.disabled=true;
- save().then(function(){
-  return j('/api/refresh',{method:'POST'});
- }).then(function(){
+ var btn=$('weatherLocBtn');
+ var box=$('weatherLocStatus');
+ if(btn) btn.disabled=true;
+ if(box) box.textContent='Saving and checking…';
+ var o={weather:collect().weather};
+ j('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o)})
+ .then(function(){ return j('/api/refresh',{method:'POST'}); })
+ .then(function(){
   toast('Checking location…');
   var n=0;
   var t=setInterval(function(){
    n++;
    j('/api/status').then(function(s){
     updateWeatherLocStatus(s);
-    if(s.weather&&(s.weather.valid||s.weather.error)||n>=8){
-     clearInterval(t); if(btn) btn.disabled=false;
+    if((s.weather&&(s.weather.valid||s.weather.error))||n>=12){
+     clearInterval(t);
+     if(btn) btn.disabled=false;
     }
-   }).catch(function(){ if(n>=8){clearInterval(t); if(btn) btn.disabled=false;} });
+   }).catch(function(){
+    if(n>=12){ clearInterval(t); if(btn) btn.disabled=false; }
+   });
   },2000);
- }).catch(function(){ if(btn) btn.disabled=false; toast('Save failed',1); });
+ })
+ .catch(function(){
+  if(btn) btn.disabled=false;
+  if(box) box.innerHTML='<span style="color:var(--red)">Check failed</span>';
+  toast('Check failed',1);
+ });
 }
 
 // GitHub self-update

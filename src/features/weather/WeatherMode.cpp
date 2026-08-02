@@ -32,6 +32,25 @@ static int drawStatusBar(const Settings& s) {
   return 14;
 }
 
+static void drawTemp(Arduino_GFX* gfx, float temp, bool metric, int y) {
+  char num[12];
+  snprintf(num, sizeof(num), "%.0f", temp);
+  const char* unit = metric ? "C" : "F";
+  const uint8_t numSz = 3;
+  const uint8_t unitSz = 2;
+  int numW = gfxTextW(num, numSz);
+  int unitW = gfxTextW(unit, unitSz);
+  int x = TFT_WIDTH - 12 - numW - unitW - 2;
+  gfx->setTextSize(numSz);
+  gfx->setTextColor(C_WHITE);
+  gfx->setCursor(x, y);
+  gfx->print(num);
+  gfx->setTextSize(unitSz);
+  gfx->setTextColor(C_GRAY);
+  gfx->setCursor(x + numW + 4, y + 8);
+  gfx->print(unit);
+}
+
 void WeatherMode::begin(const Settings& s) {
   weatherInit(s);
   weatherForceRefresh();
@@ -54,7 +73,7 @@ void WeatherMode::render(const Settings& s) {
   gfx->fillScreen(C_BLACK);
 
   const WeatherData& d = weatherData();
-  int y0 = drawStatusBar(s) + 4;
+  int y0 = drawStatusBar(s) + 2;
 
   if (d.error || !d.valid) {
     const char* msg = d.errorMsg[0] ? d.errorMsg
@@ -68,29 +87,29 @@ void WeatherMode::render(const Settings& s) {
   bool metric = s.weather.unitsMetric;
   char buf[32];
 
-  gfxDrawCentered(d.city[0] ? d.city : s.weather.city.c_str(), y0 + 2, 2, C_WHITE);
+  const char* cityName = d.city[0] ? d.city : s.weather.city.c_str();
+  gfxDrawCentered(cityName, y0 + 4, gfxFitSize(cityName, TFT_WIDTH - 12, 2), C_WHITE);
 
   if (d.iconCode[0])
-    weatherDrawIcon(gfx, d.iconCode, TFT_WIDTH / 2, y0 + 34, 14);
+    weatherDrawIcon(gfx, d.iconCode, 58, y0 + 58, 15);
 
-  snprintf(buf, sizeof(buf), "%.0f%s", d.temp, metric ? "°C" : "°F");
-  gfxDrawCentered(buf, y0 + 56, 4, C_WHITE);
+  drawTemp(gfx, d.temp, metric, y0 + 38);
 
   if (d.description[0])
-    gfxDrawCentered(d.description, y0 + 96, 1, C_GRAY);
+    gfxDrawCentered(d.description, y0 + 92, gfxFitSize(d.description, TFT_WIDTH - 12, 1), C_GRAY);
 
-  snprintf(buf, sizeof(buf), "H:%.0f L:%.0f  %u%%",
+  snprintf(buf, sizeof(buf), "H%.0f  L%.0f  %u%%",
            d.tempMax, d.tempMin, (unsigned)d.humidity);
-  gfxDrawCentered(buf, y0 + 112, 1, C_DGRAY);
+  gfxDrawCentered(buf, y0 + 108, 1, C_DGRAY);
 
   if (s.weather.showForecast && d.forecastCount > 0) {
-    int fy = y0 + 132;
-    gfx->drawFastHLine(12, fy, TFT_WIDTH - 24, C_DGRAY);
-    fy += 8;
+    int fy = y0 + 124;
+    gfx->drawFastHLine(16, fy, TFT_WIDTH - 32, C_DGRAY);
+    fy += 10;
 
-    int colW = (TFT_WIDTH - 16) / (int)d.forecastCount;
+    int colW = (TFT_WIDTH - 20) / (int)d.forecastCount;
     for (uint8_t i = 0; i < d.forecastCount; i++) {
-      int cx = 8 + (int)i * colW + colW / 2;
+      int cx = 10 + (int)i * colW + colW / 2;
       gfx->setTextSize(1);
       gfx->setTextColor(C_GRAY);
       int tw = gfxTextW(d.forecast[i].label, 1);
@@ -100,21 +119,19 @@ void WeatherMode::render(const Settings& s) {
       snprintf(buf, sizeof(buf), "%.0f", d.forecast[i].hi);
       tw = gfxTextW(buf, 1);
       gfx->setTextColor(C_WHITE);
-      gfx->setCursor(cx - tw / 2, fy + 12);
+      gfx->setCursor(cx - tw / 2, fy + 14);
       gfx->print(buf);
 
       snprintf(buf, sizeof(buf), "%.0f", d.forecast[i].lo);
       tw = gfxTextW(buf, 1);
       gfx->setTextColor(C_DGRAY);
-      gfx->setCursor(cx - tw / 2, fy + 22);
+      gfx->setCursor(cx - tw / 2, fy + 26);
       gfx->print(buf);
     }
   }
 }
 
 void WeatherMode::service(const Settings& s) {
-  // Data fetch runs from main loop so weather updates in any display mode.
-
   const WeatherData& d = weatherData();
   uint32_t ok = d.lastOkMs;
   bool err = d.error;
