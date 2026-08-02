@@ -115,7 +115,7 @@ static void handleStatus() {
     JsonObject wx = o["weather"].to<JsonObject>();
     wx["valid"] = w.valid;
     wx["error"] = w.error;
-    if (w.error && w.errorMsg[0]) wx["errorMsg"] = w.errorMsg;
+    if (w.errorMsg[0]) wx["errorMsg"] = w.errorMsg;
     if (w.lastOkMs) wx["agoSec"] = (millis() - w.lastOkMs) / 1000;
     if (w.valid) {
       wx["temp"] = w.temp;

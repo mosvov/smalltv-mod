@@ -98,14 +98,15 @@ static bool mapHttpError(int code, JsonObjectConst root) {
 }
 
 static bool fetchJsonBody(const Settings& s, const String& url, JsonDocument& doc,
-                          JsonDocument* filterDoc) {
+                          JsonDocument* filterDoc, bool* transientOut = nullptr) {
+  if (transientOut) *transientOut = false;
   bool https = url.startsWith("https://");
   std::unique_ptr<NetClient> client;
   if (https) {
     probeTls();
     const uint32_t needBlock = (uint32_t)g_tlsRx + 1024;
-    if (ESP.getFreeHeap() < 18000 || platformMaxFreeBlock() < needBlock) {
-      setError("Low heap");
+    if (ESP.getFreeHeap() < 20000 || platformMaxFreeBlock() < needBlock) {
+      if (transientOut) *transientOut = true;
       return false;
     }
     // OpenWeather needs modern ECDHE suites — not the static-RSA-only list.
@@ -276,32 +277,34 @@ static void parseForecast(JsonArrayConst list) {
 static bool fetchCurrent(const Settings& s) {
   if (s.weather.apiKey.length() < 8) {
     setError("No API key");
-    return true;
+    return false;
   }
   if (s.weather.city.length() < 2) {
     setError("Err city!");
-    return true;
+    return false;
   }
 
   JsonDocument doc;
-  if (!fetchJsonBody(s, buildCurrentUrl(s), doc, nullptr)) {
+  bool transient = false;
+  if (!fetchJsonBody(s, buildCurrentUrl(s), doc, nullptr, &transient)) {
+    if (transient) return false;
     if (!g_data.error) setError("Fetch failed");
-    return true;
+    return false;
   }
 
   JsonObjectConst root = doc.as<JsonObjectConst>();
   if (root["cod"].is<int>() && root["cod"].as<int>() != 200) {
     mapHttpError(root["cod"].as<int>(), root);
-    return true;
+    return false;
   }
   if (root["message"].is<const char*>()) {
     mapHttpError(0, root);
-    return true;
+    return false;
   }
 
   if (!parseCurrent(root)) {
     setError("Parse error");
-    return true;
+    return false;
   }
   return true;
 }
@@ -331,13 +334,16 @@ static bool fetchForecast(const Settings& s) {
 
 void weatherService(const Settings& s) {
   if (millis() < g_nextPollMs) return;
+  if (s.weather.apiKey.length() < 8 || s.weather.city.length() < 2) return;
+
+  probeTls();
 
   if (g_fetchPhase == 0) {
     if (fetchCurrent(s)) {
       g_fetchPhase = 1;
-      g_nextPollMs = millis() + 500;   // brief gap before forecast request
+      g_nextPollMs = millis() + 500;
     } else {
-      g_nextPollMs = millis() + 5000;
+      g_nextPollMs = millis() + (g_data.error ? 60000UL : 15000UL);
     }
     return;
   }

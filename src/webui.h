@@ -104,24 +104,28 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
 
  <!-- DISPLAY (shared) -->
  <section id="display" class="tab">
-  <div class="card"><h2>Mode</h2>
-   <label>What this device shows</label>
-   <select id="mode" onchange="modeChanged()">
-    <option value="stocks">Stock / crypto ticker</option>
-    <option value="usage">Claude usage</option>
-    <option value="radar">Plane radar</option>
-    <option value="weather">Weather</option>
-    <option value="carousel">Carousel (rotate modes)</option>
-   </select>
-   <div id="carouselRow">
-    <label>Switch mode every (s)</label><input id="carouselSec" type="number" min="5" max="3600">
-    <label>Include in rotation</label>
-    <div class="chk"><input id="carouselTicker" type="checkbox"><label>Ticker</label></div>
-    <div class="chk"><input id="carouselUsage" type="checkbox"><label>Claude usage</label></div>
-    <div class="chk"><input id="carouselRadar" type="checkbox"><label>Plane radar</label></div>
-    <div class="chk"><input id="carouselWeather" type="checkbox"><label>Weather</label></div>
+  <div class="card"><h2>Display mode</h2>
+   <label>How to show features</label>
+   <div class="chk"><input type="radio" name="displayType" id="displaySingle" value="single" onchange="displayTypeChanged()"><label for="displaySingle">Single screen — one feature at a time</label></div>
+   <div class="chk"><input type="radio" name="displayType" id="displayCarousel" value="carousel" onchange="displayTypeChanged()"><label for="displayCarousel">Carousel — rotate through selected screens</label></div>
+   <div id="singleScreenRow" style="margin-top:10px">
+    <label>Screen</label>
+    <select id="singleMode">
+     <option value="stocks">Stock / crypto ticker</option>
+     <option value="usage">Claude usage</option>
+     <option value="radar">Plane radar</option>
+     <option value="weather">Weather</option>
+    </select>
    </div>
-   <small class="hint">Pick one fixed screen above, or choose <strong>Carousel</strong> to rotate through the checked features. Configure each feature in its own tab.</small>
+   <div id="carouselRow" style="margin-top:10px">
+    <label>Switch screen every (s)</label><input id="carouselSec" type="number" min="5" max="3600">
+    <label style="margin-top:8px">Screens in rotation</label>
+    <div class="chk"><input id="carouselTicker" type="checkbox"><label for="carouselTicker">Ticker</label></div>
+    <div class="chk"><input id="carouselUsage" type="checkbox"><label for="carouselUsage">Claude usage</label></div>
+    <div class="chk"><input id="carouselRadar" type="checkbox"><label for="carouselRadar">Plane radar</label></div>
+    <div class="chk"><input id="carouselWeather" type="checkbox"><label for="carouselWeather">Weather</label></div>
+   </div>
+   <small class="hint">Single screen shows one feature continuously. Carousel cycles only through the checked screens above.</small>
   </div>
   <div class="card"><h2>Screen</h2>
    <label>Brightness: <span id="brVal"></span>%</label>
@@ -298,7 +302,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    <div class="chk"><input id="weatherShowForecast" type="checkbox"><label>3-day forecast row</label></div>
    <div class="chk"><input id="weatherShowClock" type="checkbox"><label>Clock (HH:MM, needs NTP)</label></div>
    <div class="chk"><input id="weatherShowWifi" type="checkbox"><label>WiFi signal dot</label></div>
-   <small class="hint">Uses OpenWeatherMap directly over HTTPS. Poll defaults to 20 minutes (stock cadence). City format: <code>Saint Johns,US</code> or <code>Portland,OR,US</code> if ambiguous. New API keys can take up to 2 hours to activate.</small>
+   <small class="hint">Uses OpenWeatherMap directly over HTTPS. City format: <code>Saint Johns,US</code> (no space after comma). Re-enter the API key if you change accounts. New keys can take up to 2 hours to activate.</small>
   </div>
  </section>
 
@@ -399,11 +403,14 @@ var CAROPT={ticker:'carouselTicker',usage:'carouselUsage',radar:'carouselRadar',
 function hideFeat(name){
  var b=document.querySelector('nav button[data-t="'+name+'"]'); if(b)b.remove();
  var sec=$(name); if(sec)sec.remove();
- var o=document.querySelector('#mode option[value="'+MODEOPT[name]+'"]'); if(o)o.remove();
+ var o=document.querySelector('#singleMode option[value="'+MODEOPT[name]+'"]'); if(o)o.remove();
  var c=$(CAROPT[name]); if(c)c.closest('.chk').remove();
 }
-function modeChanged(){if(!$('mode'))return;
- $('carouselRow').style.display=$('mode').value==='carousel'?'block':'none';}
+function displayTypeChanged(){
+ var car=gc('displayCarousel');
+ $('singleScreenRow').style.display=car?'none':'block';
+ $('carouselRow').style.display=car?'block':'none';
+}
 function symCount(){var n=0;document.querySelectorAll('#symTable tr').forEach(function(tr){
  var s=tr.querySelector('.s').value.trim(); if(!s) return;
  var en=tr.querySelector('.en'); if(en&&!en.checked) return; n++;}); return n;}
@@ -441,7 +448,11 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  sv('tz',ck.tz||''); sc('nightEnabled',!!ck.nightEnabled);
  sv('nightStart',ck.nightStart||'22:00'); sv('nightEnd',ck.nightEnd||'07:00');
  sv('nightLevel',ck.nightLevel!=null?ck.nightLevel:0); $('nlVal')&&($('nlVal').textContent=(ck.nightLevel!=null?ck.nightLevel:0));
- $('mode').value=c.mode||'stocks'; modeChanged();
+ var isCar=c.mode==='carousel';
+ $('displayCarousel').checked=isCar;
+ $('displaySingle').checked=!isCar;
+ $('singleMode').value=isCar?'stocks':(c.mode||'stocks');
+ displayTypeChanged();
  sv('carouselSec',c.carouselSec||30);
  sc('carouselTicker',c.carouselTicker!==false); sc('carouselUsage',c.carouselUsage!==false); sc('carouselRadar',c.carouselRadar!==false); sc('carouselWeather',c.carouselWeather!==false);
  // ticker slice
@@ -525,7 +536,7 @@ function radarSrcChanged(){if(!$('radarSource'))return;var d=$('radarSource').va
   :'The device requests <code>?lat=..&amp;lon=..&amp;dist=..</code> from your LAN proxy, which pre-filters adsb.fi to a small JSON. Most reliable on the ESP8266.';}
 
 function collect(){
- var o={mode:gv('mode'),
+ var o={mode:gc('displayCarousel')?'carousel':gv('singleMode'),
   carouselSec:parseInt(gv('carouselSec'))||30,
   carouselTicker:gc('carouselTicker'), carouselUsage:gc('carouselUsage'), carouselRadar:gc('carouselRadar'), carouselWeather:gc('carouselWeather'),
   brightness:parseInt(gv('brightness'))||0,
@@ -688,10 +699,10 @@ function loadStatus(){j('/api/status').then(function(s){
  $('tickBox').innerHTML=h||'<span class="muted">No tickers configured</span>';
  var wx=s.weather;
  if(wx){
+  var wtxt=wx.valid?(esc(wx.city||'-')+' '+wx.temp+(C.weather&&C.weather.unitsMetric!==false?'°C':'°F'):
+   (wx.errorMsg?esc(wx.errorMsg):(wx.error?'error':'waiting…'));
   var wh='<div class="kv"><span class="muted">Weather</span><b style="color:'+
-   (wx.error?'var(--red)':(wx.valid?'var(--acc)':'var(--mut)'))+'">'+
-   (wx.valid?(esc(wx.city||'-')+' '+wx.temp+(C.weather&&C.weather.unitsMetric!==false?'°C':'°F')):(wx.errorMsg||wx.error?'error':'...'))+
-   '</b></div>';
+   (wx.error?'var(--red)':(wx.valid?'var(--acc)':'var(--mut)'))+'">'+wtxt+'</b></div>';
   if(wx.agoSec!=null) wh+='<div class="kv"><span class="muted">Updated</span><span>'+wx.agoSec+'s ago</span></div>';
   $('statusBox').innerHTML+=wh;
  }

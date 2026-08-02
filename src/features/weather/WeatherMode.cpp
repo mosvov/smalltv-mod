@@ -109,7 +109,7 @@ void WeatherMode::render(const Settings& s) {
 }
 
 void WeatherMode::service(const Settings& s) {
-  weatherService(s);
+  // Data fetch runs from main loop so weather updates in any display mode.
 
   const WeatherData& d = weatherData();
   uint32_t ok = d.lastOkMs;
