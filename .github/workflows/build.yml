@@ -32,6 +32,9 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: bash .github/scripts/check-fw-version.sh "$BASE_SHA"
 
+      - name: Validate embedded web UI JavaScript
+        run: node .github/scripts/check-webui-js.mjs
+
   firmware:
     needs: version-check
     if: >-
