@@ -293,7 +293,11 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    <label>API key <span class="muted">(free at openweathermap.org)</span></label>
    <input id="weatherApiKey" type="password" placeholder="(unchanged)">
    <label>City</label>
-   <input id="weatherCity" type="text" placeholder="Zurich,CH">
+   <input id="weatherCity" type="text" placeholder="Saint Johns,FL,US">
+   <div id="weatherLocBox" style="margin:10px 0;padding:10px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg2)">
+    <div id="weatherLocStatus" class="muted">Enter a city and click Check location</div>
+    <button class="btn sec" type="button" style="margin-top:8px" onclick="checkWeatherLoc()" id="weatherLocBtn">Check location</button>
+   </div>
    <div class="row">
     <div><label>Units</label>
      <select id="weatherUnits"><option value="true">°C (metric)</option><option value="false">°F (imperial)</option></select></div>
@@ -302,7 +306,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    <div class="chk"><input id="weatherShowForecast" type="checkbox"><label>3-day forecast row</label></div>
    <div class="chk"><input id="weatherShowClock" type="checkbox"><label>Clock (HH:MM, needs NTP)</label></div>
    <div class="chk"><input id="weatherShowWifi" type="checkbox"><label>WiFi signal dot</label></div>
-   <small class="hint">Uses OpenWeatherMap directly over HTTPS. City format: <code>Saint Johns,US</code> (no space after comma). Re-enter the API key if you change accounts. New keys can take up to 2 hours to activate.</small>
+   <small class="hint">Uses OpenWeatherMap directly over HTTPS. US cities: <code>City,ST,US</code> (e.g. <code>Saint Johns,FL,US</code>), international: <code>Zurich,CH</code>, or coordinates <code>30.33,-81.65</code>. <a href="https://openweathermap.org/find" target="_blank" rel="noopener">Search your city on OpenWeather</a> to confirm spelling and format. Re-enter the API key if you change accounts. New keys can take up to 2 hours to activate.</small>
   </div>
  </section>
 
@@ -710,13 +714,19 @@ function loadStatus(){j('/api/status').then(function(s){
  var wx=s.weather;
  if(wx){
   var unit=(C.weather&&C.weather.unitsMetric!==false)?'°C':'°F';
-  var wtxt=wx.valid?(esc(wx.city||'-')+' '+wx.temp+unit):
+  var icon=wx.icon?'<img src="https://openweathermap.org/img/wn/'+esc(wx.icon)+'@2x.png" width="40" height="40" style="vertical-align:middle;margin-right:6px" alt="">':'';
+  var wtxt=wx.valid?(icon+esc(wx.city||'-')+' '+wx.temp+unit+(wx.description?' · '+esc(wx.description):'')):
    (wx.errorMsg?esc(wx.errorMsg):(wx.error?'error':'waiting...'));
+  if(wx.valid&&wx.configuredCity&&wx.city&&wx.configuredCity.split(',')[0].toLowerCase().indexOf(wx.city.toLowerCase())<0&&wx.city.toLowerCase().indexOf(wx.configuredCity.split(',')[0].toLowerCase())<0)
+   wtxt+=' <span style="color:var(--yellow)">(check city format)</span>';
   var wh='<div class="kv"><span class="muted">Weather</span><b style="color:'+
    (wx.error?'var(--red)':(wx.valid?'var(--acc)':'var(--mut)'))+'">'+wtxt+'</b></div>';
+  if(wx.configuredCity) wh+='<div class="kv"><span class="muted">Configured</span><span>'+esc(wx.configuredCity)+'</span></div>';
+  if(wx.valid&&(wx.lat!=null)&&wx.lon!=null) wh+='<div class="kv"><span class="muted">Coords</span><span>'+wx.lat.toFixed(4)+', '+wx.lon.toFixed(4)+'</span></div>';
   if(wx.agoSec!=null) wh+='<div class="kv"><span class="muted">Updated</span><span>'+wx.agoSec+'s ago</span></div>';
   $('statusBox').innerHTML+=wh;
  }
+ updateWeatherLocStatus(s);
 }).catch(function(e){
  var sb=$('statusBox'); if(sb)sb.innerHTML='<div class="kv"><span class="muted">Status</span><b style="color:var(--red)">'+esc(e.message||'load failed')+'</b></div>';
 })}
@@ -724,6 +734,47 @@ function kv(k,v){return '<div class="kv"><span class="muted">'+k+'</span><b>'+v+
 function fmtUp(s){var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
  return (d?d+'d ':'')+(h?h+'h ':'')+m+'m'}
 function refreshNow(){j('/api/refresh',{method:'POST'}).then(function(){toast('Refreshing...');setTimeout(loadStatus,1500)})}
+
+function updateWeatherLocStatus(s){
+ var box=$('weatherLocStatus'); if(!box) return;
+ var wx=s&&s.weather;
+ var cfg=(wx&&wx.configuredCity)||(C.weather&&C.weather.city)||gv('weatherCity');
+ if(!cfg){box.textContent='Enter a city above';return;}
+ if(!wx){box.textContent='Save settings, then check location';return;}
+ if(wx.error){
+  box.innerHTML='<span style="color:var(--red)">'+esc(wx.errorMsg||'error')+'</span> — try <a href="https://openweathermap.org/find?q='+encodeURIComponent(cfg)+'" target="_blank" rel="noopener">openweathermap.org/find</a>';
+  return;
+ }
+ if(!wx.valid){box.textContent='Waiting for weather data…';return;}
+ var icon=wx.icon?'<img src="https://openweathermap.org/img/wn/'+esc(wx.icon)+'@2x.png" width="50" height="50" style="vertical-align:middle;margin-right:8px" alt="">':'';
+ var resolved=esc(wx.city||'-');
+ var desc=wx.description?' — '+esc(wx.description):'';
+ var coords=(wx.lat!=null&&wx.lon!=null)?' ('+wx.lat.toFixed(2)+', '+wx.lon.toFixed(2)+')':'';
+ var cfgName=cfg.split(',')[0].trim().toLowerCase();
+ var resName=(wx.city||'').toLowerCase();
+ var warn=(cfgName&&resName&&cfgName.indexOf(resName)<0&&resName.indexOf(cfgName)<0)
+  ? '<br><span style="color:var(--yellow)">Resolved city differs from what you entered — add state/country, e.g. City,FL,US or use coordinates from <a href="https://openweathermap.org/find?q='+encodeURIComponent(cfg)+'" target="_blank" rel="noopener">OpenWeather Find</a>.</span>' : '';
+ box.innerHTML=icon+'<b>'+resolved+'</b>'+coords+desc+warn;
+}
+
+function checkWeatherLoc(){
+ var btn=$('weatherLocBtn'); if(btn) btn.disabled=true;
+ save().then(function(){
+  return j('/api/refresh',{method:'POST'});
+ }).then(function(){
+  toast('Checking location…');
+  var n=0;
+  var t=setInterval(function(){
+   n++;
+   j('/api/status').then(function(s){
+    updateWeatherLocStatus(s);
+    if(s.weather&&(s.weather.valid||s.weather.error)||n>=8){
+     clearInterval(t); if(btn) btn.disabled=false;
+    }
+   }).catch(function(){ if(n>=8){clearInterval(t); if(btn) btn.disabled=false;} });
+  },2000);
+ }).catch(function(){ if(btn) btn.disabled=false; toast('Save failed',1); });
+}
 
 // GitHub self-update
 function checkUpdate(){$('ghMsg').textContent='Checking GitHub...';$('chkBtn').disabled=true;

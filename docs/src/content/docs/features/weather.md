@@ -17,7 +17,7 @@ Switch **Display → Mode** to **Weather**, or add Weather to a **Carousel** rot
 ## What it shows
 
 - City name and large current temperature (°C or °F).
-- Text condition description (no icon bitmaps in v1 — keeps flash and RAM free).
+- Text condition description and a simple drawn weather icon (sun, cloud, rain, etc.).
 - Today’s high/low and humidity.
 - Optional **3-day forecast** row with weekday labels and high/low per day.
 - Optional **clock** (HH:MM) and **WiFi signal** dot in the status strip (same idea as the ticker overlay).

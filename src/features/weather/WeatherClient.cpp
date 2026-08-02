@@ -5,6 +5,10 @@
 static WeatherData g_data;
 static uint32_t    g_nextPollMs = 0;
 static uint8_t     g_fetchPhase = 0;   // 0 = current, 1 = forecast
+static bool        g_hasResolvedCoords = false;
+static float       g_resolvedLat = 0;
+static float       g_resolvedLon = 0;
+static String      g_resolvedForCity;
 
 // Probe MFLN once so BearSSL can use the smallest safe RX buffer (ESP8266 heap).
 static uint16_t g_tlsRx = 0;
@@ -29,10 +33,17 @@ void weatherInit(const Settings& s) {
   g_data.clear();
   g_fetchPhase = 0;
   g_nextPollMs = millis();
+  g_hasResolvedCoords = false;
+  g_resolvedForCity = "";
   probeTls();
 }
 
-void weatherForceRefresh() { g_nextPollMs = millis(); g_fetchPhase = 0; }
+void weatherForceRefresh() {
+  g_nextPollMs = millis();
+  g_fetchPhase = 0;
+  g_hasResolvedCoords = false;
+  g_resolvedForCity = "";
+}
 
 static void setError(const char* msg) {
   g_data.error = true;
@@ -43,7 +54,7 @@ static void setError(const char* msg) {
 static void appendUrlEncoded(String& u, const char* s) {
   while (*s) {
     unsigned char c = (unsigned char)*s++;
-    if (c == ' ') u += '%20';
+    if (c == ' ') u += '+';
     else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
              (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~')
       u += (char)c;
@@ -55,27 +66,156 @@ static void appendUrlEncoded(String& u, const char* s) {
   }
 }
 
-static String buildCurrentUrl(const Settings& s) {
+// OpenWeather expects literal commas between city/state/country segments. Encoding
+// every comma as %2C breaks multi-word US cities (e.g. "Los Angeles,CA,US").
+static void appendQueryQ(String& u, const String& city) {
+  int start = 0;
+  while (start <= (int)city.length()) {
+    int comma = city.indexOf(',', start);
+    if (comma < 0) comma = (int)city.length();
+    if (comma > start) appendUrlEncoded(u, city.substring(start, comma).c_str());
+    if (comma >= (int)city.length()) break;
+    u += ',';
+    start = comma + 1;
+  }
+}
+
+static bool isLatLon(const String& city, float& lat, float& lon) {
+  int comma = city.indexOf(',');
+  if (comma <= 0) return false;
+  String a = city.substring(0, comma);
+  String b = city.substring(comma + 1);
+  a.trim();
+  b.trim();
+  if (!a.length() || !b.length()) return false;
+  for (unsigned i = 0; i < a.length(); i++) {
+    char c = a[i];
+    if (!isDigit((unsigned char)c) && c != '.' && c != '-' && c != '+') return false;
+  }
+  for (unsigned i = 0; i < b.length(); i++) {
+    char c = b[i];
+    if (!isDigit((unsigned char)c) && c != '.' && c != '-' && c != '+') return false;
+  }
+  lat = a.toFloat();
+  lon = b.toFloat();
+  return true;
+}
+
+static void appendUnits(const Settings& s, String& u) {
+  u += F("&appid=");
+  u += s.weather.apiKey;
+  u += s.weather.unitsMetric ? F("&units=metric") : F("&units=imperial");
+}
+
+static String buildCurrentUrlQ(const Settings& s) {
   String u = F("https://");
   u += F(OWM_HOST);
   u += F("/data/2.5/weather?q=");
-  appendUrlEncoded(u, s.weather.city.c_str());
-  u += F("&appid=");
-  u += s.weather.apiKey;
-  u += s.weather.unitsMetric ? F("&units=metric") : F("&units=imperial");
+  appendQueryQ(u, s.weather.city);
+  appendUnits(s, u);
   return u;
 }
 
-static String buildForecastUrl(const Settings& s) {
+static String buildForecastUrlQ(const Settings& s) {
   String u = F("https://");
   u += F(OWM_HOST);
   u += F("/data/2.5/forecast?q=");
-  appendUrlEncoded(u, s.weather.city.c_str());
-  u += F("&appid=");
-  u += s.weather.apiKey;
-  u += s.weather.unitsMetric ? F("&units=metric") : F("&units=imperial");
+  appendQueryQ(u, s.weather.city);
+  appendUnits(s, u);
   u += F("&cnt=27");
   return u;
+}
+
+static String buildCurrentUrlCoords(const Settings& s, float lat, float lon) {
+  String u = F("https://");
+  u += F(OWM_HOST);
+  u += F("/data/2.5/weather?lat=");
+  u += String(lat, 5);
+  u += F("&lon=");
+  u += String(lon, 5);
+  appendUnits(s, u);
+  return u;
+}
+
+static String buildForecastUrlCoords(const Settings& s, float lat, float lon) {
+  String u = F("https://");
+  u += F(OWM_HOST);
+  u += F("/data/2.5/forecast?lat=");
+  u += String(lat, 5);
+  u += F("&lon=");
+  u += String(lon, 5);
+  appendUnits(s, u);
+  u += F("&cnt=27");
+  return u;
+}
+
+static String buildGeocodeUrl(const Settings& s) {
+  String u = F("https://");
+  u += F(OWM_HOST);
+  u += F("/geo/1.0/direct?q=");
+  appendQueryQ(u, s.weather.city);
+  u += F("&limit=1&appid=");
+  u += s.weather.apiKey;
+  return u;
+}
+
+static bool streamFindPattern(Stream& s, const char* pat) {
+  int i = 0;
+  while (s.available()) {
+    char c = (char)s.read();
+    if (c == pat[i]) {
+      if (pat[++i] == '\0') return true;
+    } else {
+      i = (c == pat[0]) ? 1 : 0;
+    }
+  }
+  return false;
+}
+
+static float streamReadJsonNumber(Stream& s) {
+  while (s.available()) {
+    char c = s.peek();
+    if (c == ' ' || c == '\t') s.read();
+    else break;
+  }
+  return s.parseFloat();
+}
+
+static bool fetchGeocodeBody(const Settings& s, float& lat, float& lon) {
+  probeTls();
+  const uint32_t needBlock = (uint32_t)g_tlsRx + 1024;
+  if (ESP.getFreeHeap() < 20000 || platformMaxFreeBlock() < needBlock) return false;
+
+  std::unique_ptr<NetClient> client(
+      platformMakeSecureClient(g_tlsRx, nullptr, 512, /*cheapCiphers=*/false));
+  HTTPClient http;
+  http.setTimeout(s.httpTimeout);
+  http.setReuse(false);
+  http.useHTTP10(true);
+  String url = buildGeocodeUrl(s);
+  if (!http.begin(*client, url)) return false;
+  http.addHeader("Accept", "application/json");
+  http.setUserAgent(F(OWM_USER_AGENT));
+
+  int code = http.GET();
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    return false;
+  }
+
+  Stream& stream = http.getStream();
+  if (!streamFindPattern(stream, "\"lat\":")) {
+    http.end();
+    return false;
+  }
+  lat = streamReadJsonNumber(stream);
+  if (!streamFindPattern(stream, "\"lon\":")) {
+    http.end();
+    return false;
+  }
+  lon = streamReadJsonNumber(stream);
+  http.end();
+  return true;
 }
 
 static bool mapHttpError(int code, JsonObjectConst root) {
@@ -183,8 +323,17 @@ static bool parseCurrent(JsonObjectConst root) {
     const char* desc = warr[0]["description"] | "";
     strlcpy(g_data.description, desc, sizeof(g_data.description));
     titleCase(g_data.description);
+    const char* icon = warr[0]["icon"] | "";
+    strlcpy(g_data.iconCode, icon, sizeof(g_data.iconCode));
   } else {
     g_data.description[0] = 0;
+    g_data.iconCode[0] = 0;
+  }
+
+  JsonObjectConst coord = root["coord"];
+  if (!coord.isNull()) {
+    g_data.lat = coord["lat"] | g_data.lat;
+    g_data.lon = coord["lon"] | g_data.lon;
   }
 
   g_data.valid = true;
@@ -274,6 +423,53 @@ static void parseForecast(JsonArrayConst list) {
   g_data.forecastCount = out;
 }
 
+static bool geocodeCity(const Settings& s, float& lat, float& lon) {
+  g_data.error = false;
+  g_data.errorMsg[0] = 0;
+  if (!fetchGeocodeBody(s, lat, lon)) return false;
+  return true;
+}
+
+static bool resolveCoords(const Settings& s, float& lat, float& lon) {
+  if (s.weather.city != g_resolvedForCity) {
+    g_hasResolvedCoords = false;
+    g_resolvedForCity = "";
+  }
+  if (isLatLon(s.weather.city, lat, lon)) return true;
+  if (g_hasResolvedCoords && g_resolvedForCity == s.weather.city) {
+    lat = g_resolvedLat;
+    lon = g_resolvedLon;
+    return true;
+  }
+  return false;
+}
+
+static void rememberCoords(const Settings& s, float lat, float lon) {
+  g_resolvedLat = lat;
+  g_resolvedLon = lon;
+  g_resolvedForCity = s.weather.city;
+  g_hasResolvedCoords = true;
+  g_data.lat = lat;
+  g_data.lon = lon;
+}
+
+static bool cityNeedsGeocode(const String& city) {
+  float lat = 0, lon = 0;
+  if (isLatLon(city, lat, lon)) return false;
+  return true;
+}
+
+static bool owmResponseError(JsonObjectConst root) {
+  int code = 0;
+  if (root["cod"].is<int>()) code = root["cod"].as<int>();
+  else if (root["cod"].is<const char*>()) code = root["cod"].as<String>().toInt();
+  if (code != 0 && code != 200) {
+    mapHttpError(code, root);
+    return true;
+  }
+  return false;
+}
+
 static bool fetchCurrent(const Settings& s) {
   if (s.weather.apiKey.length() < 8) {
     setError("No API key");
@@ -286,24 +482,52 @@ static bool fetchCurrent(const Settings& s) {
 
   JsonDocument doc;
   bool transient = false;
-  if (!fetchJsonBody(s, buildCurrentUrl(s), doc, nullptr, &transient)) {
+  float lat = 0, lon = 0;
+  bool haveCoords = resolveCoords(s, lat, lon);
+
+  auto tryUrl = [&](const String& url) {
+    doc.clear();
+    return fetchJsonBody(s, url, doc, nullptr, &transient);
+  };
+
+  auto parseBody = [&]() {
+    JsonObjectConst root = doc.as<JsonObjectConst>();
+    if (owmResponseError(root)) return false;
+    if (!parseCurrent(root)) {
+      setError("Parse error");
+      return false;
+    }
+    return true;
+  };
+
+  bool parsed = false;
+  const bool preferGeocode = !haveCoords && cityNeedsGeocode(s.weather.city);
+
+  if (preferGeocode && geocodeCity(s, lat, lon)) {
+    rememberCoords(s, lat, lon);
+    haveCoords = true;
+    delay(100);
+    yield();
+  }
+
+  if (haveCoords) {
+    if (tryUrl(buildCurrentUrlCoords(s, lat, lon))) parsed = parseBody();
+  } else if (tryUrl(buildCurrentUrlQ(s))) {
+    parsed = parseBody();
+  }
+
+  if (!parsed && !transient && !haveCoords) {
+    g_data.error = false;
+    g_data.errorMsg[0] = 0;
+    if (geocodeCity(s, lat, lon)) {
+      rememberCoords(s, lat, lon);
+      if (tryUrl(buildCurrentUrlCoords(s, lat, lon))) parsed = parseBody();
+    }
+  }
+
+  if (!parsed) {
     if (transient) return false;
     if (!g_data.error) setError("Fetch failed");
-    return false;
-  }
-
-  JsonObjectConst root = doc.as<JsonObjectConst>();
-  if (root["cod"].is<int>() && root["cod"].as<int>() != 200) {
-    mapHttpError(root["cod"].as<int>(), root);
-    return false;
-  }
-  if (root["message"].is<const char*>()) {
-    mapHttpError(0, root);
-    return false;
-  }
-
-  if (!parseCurrent(root)) {
-    setError("Parse error");
     return false;
   }
   return true;
@@ -322,7 +546,11 @@ static bool fetchForecast(const Settings& s) {
   main["temp_max"] = true;
 
   JsonDocument doc;
-  if (!fetchJsonBody(s, buildForecastUrl(s), doc, &filter)) {
+  float lat = 0, lon = 0;
+  const bool haveCoords = resolveCoords(s, lat, lon);
+  const String url = haveCoords ? buildForecastUrlCoords(s, lat, lon)
+                                : buildForecastUrlQ(s);
+  if (!fetchJsonBody(s, url, doc, &filter)) {
     // Forecast failure is non-fatal if current data is valid.
     return true;
   }

@@ -300,14 +300,21 @@ void WeatherSettings::fromJson(JsonObjectConst o) {
   if (o["city"].is<const char*>()) {
     city = o["city"].as<String>();
     city.trim();
-    int comma = city.indexOf(',');
-    if (comma >= 0) {
-      String left = city.substring(0, comma);
-      String right = city.substring(comma + 1);
-      left.trim();
-      right.trim();
-      city = left + "," + right;
+    String normalized;
+    int start = 0;
+    while (start <= (int)city.length()) {
+      int comma = city.indexOf(',', start);
+      if (comma < 0) comma = (int)city.length();
+      String part = city.substring(start, comma);
+      part.trim();
+      if (part.length()) {
+        if (normalized.length()) normalized += ',';
+        normalized += part;
+      }
+      if (comma >= (int)city.length()) break;
+      start = comma + 1;
     }
+    city = normalized;
   }
   if (o["unitsMetric"].is<bool>()) unitsMetric = o["unitsMetric"];
   if (o["pollSec"].is<int>()) pollSec = max(300, (int)o["pollSec"]);

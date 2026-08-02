@@ -134,7 +134,14 @@ static void handleStatus() {
     if (w.valid) {
       wx["temp"] = w.temp;
       wx["city"] = w.city[0] ? w.city : S->weather.city;
+      if (w.description[0]) wx["description"] = w.description;
+      if (w.iconCode[0]) wx["icon"] = w.iconCode;
+      if (w.lat != 0.0f || w.lon != 0.0f) {
+        wx["lat"] = w.lat;
+        wx["lon"] = w.lon;
+      }
     }
+    if (S->weather.city.length()) wx["configuredCity"] = S->weather.city;
   }
 #endif
   sendJson(doc);
