@@ -353,7 +353,10 @@ function sc(id,v){var e=$(id);if(e)e.checked=!!v}
 function gv(id){var e=$(id);return e?e.value:''}
 function gc(id){var e=$(id);return e?e.checked:false}
 function toast(m){var t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},2200)}
-function j(url,opt){return fetch(url,opt).then(function(r){return r.json()})}
+function j(url,opt){return fetch(url,opt).then(function(r){
+ if(!r.ok)return r.text().then(function(t){var m=t;try{var j=JSON.parse(t);if(j.error)m=j.error}catch(e){}throw new Error(m||('HTTP '+r.status))});
+ return r.json();
+})}
 
 // tabs
 document.querySelectorAll('nav button').forEach(function(b){b.onclick=function(){
@@ -408,8 +411,9 @@ function hideFeat(name){
 }
 function displayTypeChanged(){
  var car=gc('displayCarousel');
- $('singleScreenRow').style.display=car?'none':'block';
- $('carouselRow').style.display=car?'block':'none';
+ var sr=$('singleScreenRow'), cr=$('carouselRow');
+ if(sr)sr.style.display=car?'none':'block';
+ if(cr)cr.style.display=car?'block':'none';
 }
 function symCount(){var n=0;document.querySelectorAll('#symTable tr').forEach(function(tr){
  var s=tr.querySelector('.s').value.trim(); if(!s) return;
@@ -433,12 +437,13 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  var f=c.features||{}; ['ticker','usage','radar','weather'].forEach(function(k){if(f[k]===false)hideFeat(k)});
  var t=c.ticker||{}, u=c.usage||{};
  // shared
- ['apSsid','apPass','hostname'].forEach(function(k){$(k).value=c[k]!=null?c[k]:''});
+ ['apSsid','apPass','hostname'].forEach(function(k){sv(k,c[k]!=null?c[k]:'')});
  renderWifi(c.wifi||(c.staSsid?[{ssid:c.staSsid,passSet:c.staPassSet}]:[]));
- $('brightness').value=c.brightness; $('brVal').textContent=c.brightness;
- $('rotation').value=c.rotation;
- $('autoBrightness').checked=!!c.autoBrightness;
- $('backlightInverted').checked=!!c.backlightInverted;
+ sv('brightness',c.brightness!=null?c.brightness:90);
+ var bv=$('brVal'); if(bv)bv.textContent=c.brightness!=null?c.brightness:90;
+ sv('rotation',c.rotation!=null?c.rotation:0);
+ sc('autoBrightness',!!c.autoBrightness);
+ sc('backlightInverted',!!c.backlightInverted);
  // header chip = which chip this firmware was built for
  var chipName={esp8266:'ESP8266',esp32c2:'ESP32-C2',esp32:'ESP32'}[c.chip]||'';
  var chE=$('chip'); if(chE&&chipName){chE.textContent=chipName;chE.style.display='inline-block';}
@@ -449,9 +454,9 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  sv('nightStart',ck.nightStart||'22:00'); sv('nightEnd',ck.nightEnd||'07:00');
  sv('nightLevel',ck.nightLevel!=null?ck.nightLevel:0); $('nlVal')&&($('nlVal').textContent=(ck.nightLevel!=null?ck.nightLevel:0));
  var isCar=c.mode==='carousel';
- $('displayCarousel').checked=isCar;
- $('displaySingle').checked=!isCar;
- $('singleMode').value=isCar?'stocks':(c.mode||'stocks');
+ var dc=$('displayCarousel'), ds=$('displaySingle');
+ if(dc)dc.checked=isCar; if(ds)ds.checked=!isCar;
+ if($('singleMode'))$('singleMode').value=isCar?'stocks':(c.mode||'stocks');
  displayTypeChanged();
  sv('carouselSec',c.carouselSec||30);
  sc('carouselTicker',c.carouselTicker!==false); sc('carouselUsage',c.carouselUsage!==false); sc('carouselRadar',c.carouselRadar!==false); sc('carouselWeather',c.carouselWeather!==false);
@@ -489,6 +494,11 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  sc('weatherShowWifi',w.showWifi!==false);
  var wak=$('weatherApiKey'); if(wak) wak.placeholder=w.apiKeySet?'(unchanged)':'';
  var ap=$('apPass'); if(ap)ap.placeholder=c.apPassSet?'(unchanged)':'(open)';
+}).catch(function(e){
+ C=C||{};
+ var sb=$('statusBox');
+ if(sb)sb.innerHTML='<div class="kv"><span class="muted">Settings</span><b style="color:var(--red)">'+esc(e.message||'load failed')+'</b></div>'+
+  '<p class="muted" style="margin-top:10px">Try refreshing. After a USB flash, LittleFS may be empty — restore a backup from the Update tab or re-enter WiFi and tickers.</p>';
 })}
 
 function esc(s){return (''+(s==null?'':s)).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]})}
@@ -706,6 +716,8 @@ function loadStatus(){j('/api/status').then(function(s){
   if(wx.agoSec!=null) wh+='<div class="kv"><span class="muted">Updated</span><span>'+wx.agoSec+'s ago</span></div>';
   $('statusBox').innerHTML+=wh;
  }
+}).catch(function(e){
+ var sb=$('statusBox'); if(sb)sb.innerHTML='<div class="kv"><span class="muted">Status</span><b style="color:var(--red)">'+esc(e.message||'load failed')+'</b></div>';
 })}
 function kv(k,v){return '<div class="kv"><span class="muted">'+k+'</span><b>'+v+'</b></div>'}
 function fmtUp(s){var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
@@ -734,9 +746,11 @@ function selfUpdate(){if(!confirm('Download and flash the latest release from Gi
   var t=setInterval(function(){n++;
    j('/api/status').then(function(s){
     fails=0;
-    if(cur&&s.version&&s.version!==cur){clearInterval(t);$('ghMsg').textContent='Updated to '+s.version+'.';$('chkBtn').disabled=false;$('ghUpBtn').disabled=false;return}
     var m=s.updateMsg||'';
-    if(m&&m!=='starting...'&&m!=='updating...'){clearInterval(t);$('ghMsg').textContent='Update failed: '+m;$('chkBtn').disabled=false;$('ghUpBtn').disabled=false}
+    if(m&&m.indexOf('updated to ')===0){clearInterval(t);$('ghMsg').textContent=m;$('chkBtn').disabled=false;$('ghUpBtn').disabled=false;loadStatus();return}
+    if(cur&&s.version&&s.version!==cur){clearInterval(t);$('ghMsg').textContent='Updated to '+s.version+'.';$('chkBtn').disabled=false;$('ghUpBtn').disabled=false;loadStatus();return}
+    if(m&&m!=='starting...'&&m!=='updating...'){clearInterval(t);$('ghMsg').textContent='Update failed: '+m;$('chkBtn').disabled=false;$('ghUpBtn').disabled=false;loadStatus();return}
+    if(cur&&s.version===cur&&n>8&&!m){$('ghMsg').textContent='Device back online (still '+cur+'). Waiting for boot update result…';}
    }).catch(function(){fails++;
     if(fails>=2)$('ghMsg').textContent='Device rebooting or offline… refresh this page in 2–3 minutes.';
    });
