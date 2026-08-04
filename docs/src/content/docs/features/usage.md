@@ -1,51 +1,59 @@
 ---
-title: Claude usage meter
-description: Show your Claude 5-hour and 7-day usage with an animated mascot, fed over WiFi from your PC.
+title: AI usage meter
+description: Show Claude, Cursor, and Codex quotas on the 240×240 display, fed over WiFi from your PC.
 ---
 
-Switch **Display → Mode** to **Claude usage** and the device stops showing tickers and shows your Claude consumption instead. It is the idea of a desk usage meter, on the SmallTV, over WiFi. The device's USB is power only, so nothing is wired between it and your PC.
+Switch **Display → Mode** to **AI usage** and the device shows a compact dashboard of your AI tool quotas. The PC-side [ai-usage-daemon](../../../tools/ai-usage-daemon/) reads local auth files — tokens never leave your machine.
 
 ## What it shows
 
-The screen has two states.
-
-- **Stats**, when data is flowing: a small mascot, your 5-hour and 7-day utilization as big percentages with fill bars that shade green to amber to red as you approach the cap, and reset countdowns.
-- **Idle animation**, when data stops: if the PC sleeps, the daemon stops, or the network drops, the screen plays an animated pixel mascot. Its mood, from calm to working to dancing, reflects how fast your session is burning. It snaps back to the stats as soon as data returns.
+- **Stats** (when data is flowing): three rows — **Claude** (5h %), **Cursor** (included requests), **Codex** (spend or 5h %).
+- **Idle animation** when data stops: animated pixel mascot until the daemon reconnects.
 
 ## Setup
 
-The PC-side daemon is a separate project, [clawdmeter-daemon](https://github.com/giovi321/clawdmeter-daemon). It reads the OAuth token Claude Code already stored and sends your usage to the device. The token never leaves your machine; the device only ever receives a few percentages over your LAN.
-
-1. On the PC that runs Claude Code:
+1. On the PC that runs Claude Code / Cursor / Codex:
 
    ```sh
-   git clone https://github.com/giovi321/clawdmeter-daemon
-   cd clawdmeter-daemon
+   cd smalltv-mod/tools/ai-usage-daemon
    pip install -r requirements.txt
-
-   # push to the SmallTV (works even behind WiFi client isolation):
-   python clawdmeter_daemon.py --push-to <smalltv-ip-or-hostname>
-
-   # or serve and let the device pull:
-   python clawdmeter_daemon.py --serve          # http://0.0.0.0:8787/
+   python daemon.py --serve          # http://0.0.0.0:8787/
    ```
 
-   On Windows it runs with a system-tray icon and can auto-start at login. See the [clawdmeter-daemon README](https://github.com/giovi321/clawdmeter-daemon) for tray setup and a durable login token.
+   Or push mode (device cannot reach PC):
 
-2. In the web UI open **Display → Mode → Claude usage**. For push, leave the **Usage URL** blank. For serve and pull, set it to `http://<that-pc-ip>:8787/`. Save.
+   ```sh
+   python daemon.py --push-to http://192.168.5.11/api/usage
+   python daemon.py --push             # mDNS discover all SmallTVs
+   ```
 
-The mascot animations are a curated subset of the [claudepix](https://claudepix.vercel.app) pixel-art set, re-rendered on the ST7789.
+2. In the web UI open **AI usage** tab. Set **Usage daemon URL** to `http://<pc-ip>:8787/` (pull) or leave blank (push). Save.
 
-### Multiple devices (auto-discovery)
+3. Switch **Display → Mode** to **AI usage** (or add to carousel).
 
-Each device advertises a `_clawdmeter._tcp` mDNS service. The daemon can use this to discover every SmallTV on the LAN and push to all of them at once, no per-device address needed:
+## Provider notes
 
-```sh
-python clawdmeter_daemon.py --push
+| Provider | Source | If unavailable |
+|----------|--------|----------------|
+| **Claude** | Claude Code OAuth (`~/.claude/.credentials.json`) | Bedrock-only shows `N/A` |
+| **Cursor** | Cursor IDE session (`state.vscdb`) or cursor-usage config | Row shows `N/A` |
+| **Codex** | `~/.codex/auth.json` → ChatGPT wham/usage | Row shows `N/A` |
+
+Legacy [clawdmeter-daemon](https://github.com/giovi321/clawdmeter-daemon) still works for Claude-only (v1 JSON).
+
+## JSON contract (v2)
+
+```json
+{
+  "v": 2,
+  "claude": { "ok": true, "s": 29, "pct": 29 },
+  "cursor": { "ok": true, "used": 78, "limit": 1000, "pct": 7.8 },
+  "codex":  { "ok": true, "used": 563, "limit": 5000, "unit": "usd", "pct": 11 }
+}
 ```
 
-IMPORTANT: mDNS is link-local and does not cross routers, subnets, or VLANs. If the daemon PC and the devices sit on different subnets, do one of:
+Top-level `s`/`w` fields are duplicated for v1 firmware compatibility.
 
-- run the daemon on the devices' subnet
-- enable an mDNS reflector between the subnets
-- list the device IPs explicitly instead of relying on discovery, with repeatable or comma-separated `--push-to`, or via the tray icon's **Configure push targets** dialog
+## Multiple devices
+
+Each device advertises `_clawdmeter._tcp` mDNS. Run `python daemon.py --push` to update all devices on the LAN.

@@ -144,6 +144,25 @@ static void handleStatus() {
     if (S->weather.city.length()) wx["configuredCity"] = S->weather.city;
   }
 #endif
+#if WITH_USAGE
+  {
+    const UsageData& u = usageGet();
+    JsonObject ux = o["usage"].to<JsonObject>();
+    ux["valid"] = u.valid;
+    ux["error"] = u.error;
+    if (u.lastOkMs) ux["agoSec"] = (millis() - u.lastOkMs) / 1000;
+    JsonObject r;
+    r = ux["claude"].to<JsonObject>();
+    r["ok"] = u.claude.ok;
+    if (u.claude.ok) { r["pct"] = u.claude.pct; if (u.claude.line[0]) r["line"] = u.claude.line; }
+    r = ux["cursor"].to<JsonObject>();
+    r["ok"] = u.cursor.ok;
+    if (u.cursor.ok) { r["pct"] = u.cursor.pct; if (u.cursor.line[0]) r["line"] = u.cursor.line; }
+    r = ux["codex"].to<JsonObject>();
+    r["ok"] = u.codex.ok;
+    if (u.codex.ok) { r["pct"] = u.codex.pct; if (u.codex.line[0]) r["line"] = u.codex.line; }
+  }
+#endif
   sendJson(doc);
 }
 
@@ -250,6 +269,9 @@ static void handleRefresh() {
 #endif
 #if WITH_WEATHER
   weatherForceRefresh();
+#endif
+#if WITH_USAGE
+  usageForceRefresh();
 #endif
   server.send(200, "application/json", "{\"ok\":true}");
 }
