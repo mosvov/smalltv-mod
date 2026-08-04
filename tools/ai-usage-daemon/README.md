@@ -44,7 +44,24 @@ python daemon.py --push-to http://192.168.5.11/api/usage
 2. Set **Usage daemon URL** to `http://<your-pc-ip>:8787/`
 3. Save. Switch **Display → Mode** to **AI usage**.
 
-For **push mode**, leave Usage URL blank and run `python daemon.py --push`.
+For **push mode**, leave Usage URL blank and run `python daemon.py --push` (continuous) or use cron for work-hours updates (below).
+
+## Cron (work hours, every 30 min)
+
+Push once on a schedule instead of a always-on daemon:
+
+```bash
+./install-cron.sh http://192.168.5.11   # Mon–Fri, 9:00–17:59, every 30 min
+```
+
+Manual one-shot push:
+
+```bash
+./push-once.sh
+# or: python daemon.py --push-once --push-to http://192.168.5.11
+```
+
+Logs: `cron.log` in this directory. Remove: `crontab -l | grep -v 'smalltv ai-usage-daemon' | crontab -`
 
 ## JSON v2 contract
 
