@@ -213,6 +213,7 @@ def main() -> None:
     ap.add_argument("--push", action="store_true", help="Push to SmallTVs via mDNS")
     ap.add_argument("--push-to", action="append", default=[], help="Push target host/IP (repeatable)")
     ap.add_argument("--once", action="store_true", help="Fetch once and print JSON")
+    ap.add_argument("--push-once", action="store_true", help="Fetch once and POST to push target(s)")
     ap.add_argument("--port", type=int, help="Serve port override")
     args = ap.parse_args()
     cfg = load_config()
@@ -222,6 +223,15 @@ def main() -> None:
     if args.once:
         print(json.dumps(merge_payload(cfg), indent=2))
         return
+
+    if args.push_once:
+        payload = merge_payload(cfg)
+        targets = list(args.push_to or cfg.get("push_targets") or [])
+        if not targets:
+            print("No push target: use --push-to URL or push_targets in config.json", file=sys.stderr)
+            sys.exit(1)
+        ok = all(push_once(t, payload) for t in targets)
+        sys.exit(0 if ok else 1)
 
     if args.serve:
         run_serve(cfg)
