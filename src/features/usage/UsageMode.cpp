@@ -11,8 +11,8 @@ UsageMode g_usageMode;
 #define C_BARBG   0x2945
 #define C_DIM     0xB574
 
-#define ROW_H     50
-#define BAR_H     14
+#define ROW_H     56
+#define BAR_H     20
 #define MARGIN_X  10
 #define LABEL_SZ  1
 #define VALUE_SZ  2
@@ -83,7 +83,7 @@ static void drawProviderRow(Arduino_GFX* gfx, int y, const char* label,
   gfx->setCursor(MARGIN_X + w - tw, y);
   gfx->print(val);
 
-  int bx = MARGIN_X, by = y + 20, bw = w;
+  int bx = MARGIN_X, by = y + 22, bw = w;
   gfx->fillRoundRect(bx, by, bw, BAR_H, BAR_H / 2, C_BARBG);
   if (m.ok) {
     int fw = (int)(bw * constrain(m.pct, 0.0f, 100.0f) / 100.0f);
@@ -111,18 +111,9 @@ static void drawUsage(const UsageData& u, const UsageSettings& cfg) {
   int y = (TFT_HEIGHT - (int)rows * ROW_H) / 2;
   if (y < 4) y = 4;
 
-  if (cfg.showClaude) { drawProviderRow(gfx, y, "CL", u.claude); y += ROW_H; }
-  if (cfg.showCursor) { drawProviderRow(gfx, y, "CU", u.cursor); y += ROW_H; }
-  if (cfg.showCodex)  { drawProviderRow(gfx, y, "CX", u.codex); }
-
-  if (cfg.showCodex && u.codex.ok && u.codex.sub[0] == 'r' && u.codex.sub[2]) {
-    const char* reset = u.codex.sub + 2;
-    gfx->setTextSize(1);
-    gfx->setTextColor(C_DIM);
-    int rw = gfxTextW(reset, 1);
-    gfx->setCursor((TFT_WIDTH - rw) / 2, TFT_HEIGHT - 14);
-    gfx->print(reset);
-  }
+  if (cfg.showClaude) { drawProviderRow(gfx, y, "CLAUDE", u.claude); y += ROW_H; }
+  if (cfg.showCursor) { drawProviderRow(gfx, y, "CURSOR", u.cursor); y += ROW_H; }
+  if (cfg.showCodex)  { drawProviderRow(gfx, y, "CODEX",  u.codex); }
 }
 
 static void drawMascot(const uint8_t* cells, const uint16_t* palette, bool restart) {
