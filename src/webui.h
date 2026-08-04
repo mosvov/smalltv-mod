@@ -239,7 +239,11 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
    <label>Usage daemon URL</label>
    <input id="usageUrl" type="url" placeholder="http://192.168.1.10:8787/">
    <label>Refresh data (s)</label><input id="usagePollSec" type="number" min="10" max="3600">
-   <small class="hint">Runs the in-repo <a href="https://github.com/mosvov/smalltv-mod/tree/main/tools/ai-usage-daemon" target="_blank" rel="noopener">ai-usage-daemon</a> on your PC. It reads Claude, Cursor, and Codex quotas locally and sends them here. <b>Pull:</b> set Usage URL to <code>http://&lt;pc-ip&gt;:8787/</code>. <b>Push:</b> leave blank and run <code>python daemon.py --push</code>. Legacy <a href="https://github.com/giovi321/clawdmeter-daemon" target="_blank" rel="noopener">clawdmeter-daemon</a> still works for Claude-only.</small>
+   <h3 style="margin:14px 0 8px;font-size:13px;color:var(--mut)">Show on screen</h3>
+   <div class="chk"><input id="usageShowClaude" type="checkbox" checked><label for="usageShowClaude">Claude</label></div>
+   <div class="chk"><input id="usageShowCursor" type="checkbox" checked><label for="usageShowCursor">Cursor</label></div>
+   <div class="chk"><input id="usageShowCodex" type="checkbox" checked><label for="usageShowCodex">Codex</label></div>
+   <small class="hint">Runs the in-repo <a href="https://github.com/mosvov/smalltv-mod/tree/main/tools/ai-usage-daemon" target="_blank" rel="noopener">ai-usage-daemon</a> on your PC. It reads Claude, Cursor, and Codex quotas locally and sends them here. <b>Pull:</b> set Usage URL to <code>http://&lt;pc-ip&gt;:8787/</code>. <b>Push:</b> leave blank and run <code>python daemon.py --push</code>. Metric labels (tokens vs credits vs %) are set in the daemon <code>config.json</code> <code>display</code> block. Legacy <a href="https://github.com/giovi321/clawdmeter-daemon" target="_blank" rel="noopener">clawdmeter-daemon</a> still works for Claude-only.</small>
   </div>
  </section>
 
@@ -476,6 +480,9 @@ function loadConfig(){return j('/api/config').then(function(c){C=c;
  // usage slice
  sv('usageUrl',u.usageUrl);
  sv('usagePollSec',u.pollSec);
+ sc('usageShowClaude',u.showClaude!==false);
+ sc('usageShowCursor',u.showCursor!==false);
+ sc('usageShowCodex',u.showCodex!==false);
  // radar slice
  var r=c.radar||{};
  sv('radarLat',r.lat); sv('radarLon',r.lon);
@@ -577,7 +584,8 @@ function collect(){
   o.ticker=t;
  }
  // usage slice
- if($('usage')) o.usage={usageUrl:gv('usageUrl'), pollSec:parseInt(gv('usagePollSec'))||0};
+ if($('usage')) o.usage={usageUrl:gv('usageUrl'), pollSec:parseInt(gv('usagePollSec'))||0,
+  showClaude:gc('usageShowClaude'), showCursor:gc('usageShowCursor'), showCodex:gc('usageShowCodex')};
  // clock slice
  if($('tz')){var _tzn=gv('tz'); var _tzp=(_tzn in TZMAP)?TZMAP[_tzn]:((C.clock&&C.clock.tz===_tzn&&C.clock.tzPosix)?C.clock.tzPosix:'UTC0');
   o.clock={tz:_tzn,tzPosix:_tzp,
@@ -733,10 +741,14 @@ function loadStatus(){j('/api/status').then(function(s){
   function usageRow(name,row){
    if(!row) return '';
    var val=row.ok&&row.line?esc(row.line):'N/A';
+   if(row.ok&&row.sub) val+=' <span class="muted">'+esc(row.sub)+'</span>';
    return '<div class="kv"><span class="muted">'+name+'</span><b style="color:'+
     (row.ok?'var(--acc)':'var(--mut)')+'">'+val+'</b></div>';
   }
-  var uh=usageRow('Claude',ux.claude)+usageRow('Cursor',ux.cursor)+usageRow('Codex',ux.codex);
+  var uh='';
+  if(ux.showClaude!==false) uh+=usageRow('Claude',ux.claude);
+  if(ux.showCursor!==false) uh+=usageRow('Cursor',ux.cursor);
+  if(ux.showCodex!==false) uh+=usageRow('Codex',ux.codex);
   if(ux.agoSec!=null) uh+='<div class="kv"><span class="muted">Usage updated</span><span>'+ux.agoSec+'s ago</span></div>';
   $('statusBox').innerHTML+=uh;
  }

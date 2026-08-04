@@ -151,16 +151,38 @@ static void handleStatus() {
     ux["valid"] = u.valid;
     ux["error"] = u.error;
     if (u.lastOkMs) ux["agoSec"] = (millis() - u.lastOkMs) / 1000;
+    const UsageSettings& us = S->usage;
+    ux["showClaude"] = us.showClaude;
+    ux["showCursor"] = us.showCursor;
+    ux["showCodex"]  = us.showCodex;
     JsonObject r;
-    r = ux["claude"].to<JsonObject>();
-    r["ok"] = u.claude.ok;
-    if (u.claude.ok) { r["pct"] = u.claude.pct; if (u.claude.line[0]) r["line"] = u.claude.line; }
-    r = ux["cursor"].to<JsonObject>();
-    r["ok"] = u.cursor.ok;
-    if (u.cursor.ok) { r["pct"] = u.cursor.pct; if (u.cursor.line[0]) r["line"] = u.cursor.line; }
-    r = ux["codex"].to<JsonObject>();
-    r["ok"] = u.codex.ok;
-    if (u.codex.ok) { r["pct"] = u.codex.pct; if (u.codex.line[0]) r["line"] = u.codex.line; }
+    if (us.showClaude) {
+      r = ux["claude"].to<JsonObject>();
+      r["ok"] = u.claude.ok;
+      if (u.claude.ok) {
+        r["pct"] = u.claude.pct;
+        if (u.claude.line[0]) r["line"] = u.claude.line;
+        if (u.claude.sub[0]) r["sub"] = u.claude.sub;
+      }
+    }
+    if (us.showCursor) {
+      r = ux["cursor"].to<JsonObject>();
+      r["ok"] = u.cursor.ok;
+      if (u.cursor.ok) {
+        r["pct"] = u.cursor.pct;
+        if (u.cursor.line[0]) r["line"] = u.cursor.line;
+        if (u.cursor.sub[0]) r["sub"] = u.cursor.sub;
+      }
+    }
+    if (us.showCodex) {
+      r = ux["codex"].to<JsonObject>();
+      r["ok"] = u.codex.ok;
+      if (u.codex.ok) {
+        r["pct"] = u.codex.pct;
+        if (u.codex.line[0]) r["line"] = u.codex.line;
+        if (u.codex.sub[0]) r["sub"] = u.codex.sub;
+      }
+    }
   }
 #endif
   sendJson(doc);

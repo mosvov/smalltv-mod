@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -22,6 +23,17 @@ def _access_token(auth: dict) -> str | None:
     tokens = auth.get("tokens") or {}
     tok = tokens.get("access_token")
     return tok if isinstance(tok, str) and tok else None
+
+
+def _reset_label(reset_at: int | float | str | None) -> str | None:
+    if reset_at is None:
+        return None
+    try:
+        ts = int(float(reset_at))
+        dt = datetime.fromtimestamp(ts)
+        return dt.strftime("%b %d").replace(" 0", " ")
+    except (OSError, ValueError, OverflowError, TypeError):
+        return None
 
 
 def fetch() -> dict:
@@ -52,14 +64,27 @@ def fetch() -> dict:
         used = float(sc.get("used") or 0)
         limit = float(sc.get("limit") or 0)
         pct = float(sc.get("used_percent") or (used / limit * 100 if limit else 0))
-        return {
+        remaining_pct = sc.get("remaining_percent")
+        reset_at = sc.get("reset_at")
+        reset_sec = sc.get("reset_after_seconds")
+        out: dict = {
             "ok": True,
             "pct": round(pct, 1),
-            "used": used,
-            "limit": limit,
-            "unit": "usd",
-            "label": "spend",
+            "used": round(used),
+            "limit": round(limit),
+            "unit": "credits",
+            "label": "monthly",
         }
+        if remaining_pct is not None:
+            out["remaining_pct"] = round(float(remaining_pct), 1)
+        if reset_at is not None:
+            out["reset_at"] = int(reset_at)
+            label = _reset_label(reset_at)
+            if label:
+                out["reset_label"] = label
+        if reset_sec is not None:
+            out["reset_sec"] = int(reset_sec)
+        return out
 
     rl = data.get("rate_limit") or {}
     primary = rl.get("primary_window") or rl.get("secondary_window")

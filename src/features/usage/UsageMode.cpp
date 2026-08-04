@@ -63,9 +63,16 @@ static void drawProviderRow(Arduino_GFX* gfx, int y, const char* label,
     if (fw >= bh) gfx->fillRoundRect(bx, by, fw, bh, bh / 2, barColor(m.pct));
     else if (fw > 0) gfx->fillRect(bx, by, fw, bh, barColor(m.pct));
   }
+
+  if (m.ok && m.sub[0]) {
+    gfx->setTextSize(1);
+    gfx->setTextColor(C_DIM);
+    gfx->setCursor(x + 10, y + 38);
+    gfx->print(m.sub);
+  }
 }
 
-static void drawUsage(const UsageData& u) {
+static void drawUsage(const UsageData& u, const UsageSettings& cfg) {
   Arduino_GFX* gfx = gfxDev();
   if (!gfx) return;
   s_mascotPrimed = false;
@@ -81,9 +88,10 @@ static void drawUsage(const UsageData& u) {
     return;
   }
 
-  drawProviderRow(gfx, 28,  "CLAUDE", u.claude);
-  drawProviderRow(gfx, 86,  "CURSOR", u.cursor);
-  drawProviderRow(gfx, 144, "CODEX",  u.codex);
+  int y = 28;
+  if (cfg.showClaude) { drawProviderRow(gfx, y, "CLAUDE", u.claude); y += 58; }
+  if (cfg.showCursor) { drawProviderRow(gfx, y, "CURSOR", u.cursor); y += 58; }
+  if (cfg.showCodex)  { drawProviderRow(gfx, y, "CODEX",  u.codex); }
 }
 
 static void drawMascot(const uint8_t* cells, const uint16_t* palette, bool restart) {
@@ -142,7 +150,7 @@ void UsageMode::service(const Settings& s) {
   if (usageFresh(staleMs)) {
     if (showingMascot_) { showingMascot_ = false; needRender_ = true; }
     if (u.lastOkMs != usageRenderedOk_) { usageRenderedOk_ = u.lastOkMs; needRender_ = true; }
-    if (needRender_) { drawUsage(u); needRender_ = false; }
+    if (needRender_) { drawUsage(u, s.usage); needRender_ = false; }
   } else {
     if (!showingMascot_) {
       showingMascot_ = true;

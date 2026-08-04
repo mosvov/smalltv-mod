@@ -7,7 +7,7 @@ Switch **Display → Mode** to **AI usage** and the device shows a compact dashb
 
 ## What it shows
 
-- **Stats** (when data is flowing): three rows — **Claude** (5h %), **Cursor** (included requests), **Codex** (spend or 5h %).
+- **Stats** (when data is flowing): three rows — **Claude** (5h % or 30-day token total on Bedrock), **Cursor** (included requests), **Codex** (monthly credits + reset date).
 - **Idle animation** when data stops: animated pixel mascot until the daemon reconnects.
 
 ## Setup
@@ -27,15 +27,34 @@ Switch **Display → Mode** to **AI usage** and the device shows a compact dashb
    python daemon.py --push             # mDNS discover all SmallTVs
    ```
 
-2. In the web UI open **AI usage** tab. Set **Usage daemon URL** to `http://<pc-ip>:8787/` (pull) or leave blank (push). Save.
+2. In the web UI open **AI usage** tab. Set **Usage daemon URL** to `http://<pc-ip>:8787/` (pull) or leave blank (push). Use **Show on screen** to hide providers you do not need. Save.
 
 3. Switch **Display → Mode** to **AI usage** (or add to carousel).
+
+## Display options
+
+| Where | What you control |
+|-------|------------------|
+| **Device web UI** | Show/hide Claude, Cursor, Codex rows |
+| **Daemon `config.json`** | Which metrics each row shows (`display.claude`, `display.cursor`, `display.codex`) and which providers are fetched (`providers`) |
+
+Daemon `display` examples:
+
+```json
+{
+  "display": {
+    "claude": "tokens",
+    "cursor": "pct",
+    "codex": "remaining"
+  }
+}
+```
 
 ## Provider notes
 
 | Provider | Source | If unavailable |
 |----------|--------|----------------|
-| **Claude** | Claude Code OAuth (`~/.claude/.credentials.json`) | Bedrock-only shows `N/A` |
+| **Claude** | Claude Code OAuth, or local session logs on Bedrock (`~/.claude/projects/`) | OAuth shows 5h %; Bedrock shows token totals |
 | **Cursor** | Cursor IDE session (`state.vscdb`) or cursor-usage config | Row shows `N/A` |
 | **Codex** | `~/.codex/auth.json` → ChatGPT wham/usage | Row shows `N/A` |
 
@@ -48,7 +67,7 @@ Legacy [clawdmeter-daemon](https://github.com/giovi321/clawdmeter-daemon) still 
   "v": 2,
   "claude": { "ok": true, "s": 29, "pct": 29 },
   "cursor": { "ok": true, "used": 78, "limit": 1000, "pct": 7.8 },
-  "codex":  { "ok": true, "used": 563, "limit": 5000, "unit": "usd", "pct": 11 }
+  "codex":  { "ok": true, "used": 563, "limit": 5000, "unit": "credits", "pct": 11, "remaining_pct": 89, "reset_label": "Aug 31" }
 }
 ```
 

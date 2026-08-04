@@ -137,16 +137,25 @@ void TickerSettings::fromJson(JsonObjectConst o) {
 void UsageSettings::setDefaults() {
   usageUrl = "";
   pollSec = DEFAULT_POLL_SEC;
+  showClaude = true;
+  showCursor = true;
+  showCodex = true;
 }
 
 void UsageSettings::toJson(JsonObject o) const {
   o["usageUrl"] = usageUrl;
   o["pollSec"]  = pollSec;
+  o["showClaude"] = showClaude;
+  o["showCursor"] = showCursor;
+  o["showCodex"]  = showCodex;
 }
 
 void UsageSettings::fromJson(JsonObjectConst o) {
   if (o["usageUrl"].is<const char*>()) usageUrl = o["usageUrl"].as<String>();
   if (o["pollSec"].is<int>())          pollSec = max(10, (int)o["pollSec"]);
+  if (o["showClaude"].is<bool>())      showClaude = o["showClaude"].as<bool>();
+  if (o["showCursor"].is<bool>())      showCursor = o["showCursor"].as<bool>();
+  if (o["showCodex"].is<bool>())       showCodex = o["showCodex"].as<bool>();
 }
 
 // ===========================================================================
