@@ -39,7 +39,7 @@ export default defineConfig({
           items: [
             { label: 'Stock and crypto ticker', link: '/features/ticker/' },
             { label: 'Weather', link: '/features/weather/' },
-            { label: 'Claude usage meter', link: '/features/usage/' },
+            { label: 'AI usage meter', link: '/features/usage/' },
             { label: 'Plane radar', link: '/features/radar/' },
           ],
         },

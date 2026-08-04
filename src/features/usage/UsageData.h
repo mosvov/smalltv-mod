@@ -1,19 +1,41 @@
-// UsageData.h — runtime (volatile) Claude usage snapshot from the daemon.
+// UsageData.h — runtime AI usage snapshot from the daemon (Claude/Cursor/Codex).
 #pragma once
 #include <Arduino.h>
 
-struct UsageData {
-  float    sessionPct;       // 5-hour window utilization (0..100)
-  int      sessionResetMin;  // minutes until the 5-hour window resets
-  float    weeklyPct;        // 7-day window utilization (0..100)
-  int      weeklyResetMin;   // minutes until the 7-day window resets
-  char     status[16];       // e.g. "allowed", "allowed_warning", "rejected"
-
-  bool     valid;            // populated at least once
-  bool     error;            // most recent fetch failed
-  uint32_t lastOkMs;         // millis() of last good update
+struct ProviderMeter {
+  bool  ok;
+  float pct;              // 0..100 for bar width
+  char  line[20];         // e.g. "78/1000", "$563/$5k", "29%"
+  char  sub[12];          // e.g. "5h", "req", "spend"
 
   void clear() {
+    ok = false;
+    pct = 0;
+    line[0] = 0;
+    sub[0] = 0;
+  }
+};
+
+struct UsageData {
+  ProviderMeter claude;
+  ProviderMeter cursor;
+  ProviderMeter codex;
+
+  // Legacy Claude fields (v1 contract + mascot burn-rate)
+  float    sessionPct;
+  int      sessionResetMin;
+  float    weeklyPct;
+  int      weeklyResetMin;
+  char     status[16];
+
+  bool     valid;
+  bool     error;
+  uint32_t lastOkMs;
+
+  void clear() {
+    claude.clear();
+    cursor.clear();
+    codex.clear();
     sessionPct = weeklyPct = 0;
     sessionResetMin = weeklyResetMin = 0;
     status[0] = 0;

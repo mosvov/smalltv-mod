@@ -67,7 +67,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
  <button data-t="wifi">WiFi</button>
  <button data-t="display">Display</button>
  <button data-t="ticker">Ticker</button>
- <button data-t="usage">Usage</button>
+ <button data-t="usage">AI usage</button>
  <button data-t="radar">Radar</button>
  <button data-t="weather">Weather</button>
  <button data-t="update">Update</button>
@@ -112,7 +112,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
     <label>Screen</label>
     <select id="singleMode">
      <option value="stocks">Stock / crypto ticker</option>
-     <option value="usage">Claude usage</option>
+     <option value="usage">AI usage</option>
      <option value="radar">Plane radar</option>
      <option value="weather">Weather</option>
     </select>
@@ -121,7 +121,7 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
     <label>Switch screen every (s)</label><input id="carouselSec" type="number" min="5" max="3600">
     <label style="margin-top:8px">Screens in rotation</label>
     <div class="chk"><input id="carouselTicker" type="checkbox"><label for="carouselTicker">Ticker</label></div>
-    <div class="chk"><input id="carouselUsage" type="checkbox"><label for="carouselUsage">Claude usage</label></div>
+    <div class="chk"><input id="carouselUsage" type="checkbox"><label for="carouselUsage">AI usage</label></div>
     <div class="chk"><input id="carouselRadar" type="checkbox"><label for="carouselRadar">Plane radar</label></div>
     <div class="chk"><input id="carouselWeather" type="checkbox"><label for="carouselWeather">Weather</label></div>
    </div>
@@ -235,11 +235,11 @@ small.hint{display:block;color:var(--mut);margin-top:4px;font-size:12px}
 
  <!-- USAGE (feature) -->
  <section id="usage" class="tab">
-  <div class="card"><h2>Claude usage</h2>
+  <div class="card"><h2>AI usage</h2>
    <label>Usage daemon URL</label>
    <input id="usageUrl" type="url" placeholder="http://192.168.1.10:8787/">
    <label>Refresh data (s)</label><input id="usagePollSec" type="number" min="10" max="3600">
-   <small class="hint">Runs on the PC-side <a href="https://github.com/giovi321/clawdmeter-daemon" target="_blank">clawdmeter-daemon</a>, which reads your Claude usage and sends it here. <b>Pull:</b> set the Usage URL to the daemon. <b>Push:</b> leave it blank and run the daemon with <code>--push-to &lt;hostname&gt;.local</code> (for networks where the device cannot reach the PC). Running several SmallTVs? Give each a unique hostname in the WiFi tab so every PC pushes to its own device. Idle animation plays until data arrives.</small>
+   <small class="hint">Runs the in-repo <a href="https://github.com/mosvov/smalltv-mod/tree/main/tools/ai-usage-daemon" target="_blank" rel="noopener">ai-usage-daemon</a> on your PC. It reads Claude, Cursor, and Codex quotas locally and sends them here. <b>Pull:</b> set Usage URL to <code>http://&lt;pc-ip&gt;:8787/</code>. <b>Push:</b> leave blank and run <code>python daemon.py --push</code>. Legacy <a href="https://github.com/giovi321/clawdmeter-daemon" target="_blank" rel="noopener">clawdmeter-daemon</a> still works for Claude-only.</small>
   </div>
  </section>
 
@@ -727,6 +727,18 @@ function loadStatus(){j('/api/status').then(function(s){
   if(wx.valid&&(wx.lat!=null)&&wx.lon!=null) wh+='<div class="kv"><span class="muted">Coords</span><span>'+wx.lat.toFixed(4)+', '+wx.lon.toFixed(4)+'</span></div>';
   if(wx.agoSec!=null) wh+='<div class="kv"><span class="muted">Updated</span><span>'+wx.agoSec+'s ago</span></div>';
   $('statusBox').innerHTML+=wh;
+ }
+ var ux=s.usage;
+ if(ux){
+  function usageRow(name,row){
+   if(!row) return '';
+   var val=row.ok&&row.line?esc(row.line):'N/A';
+   return '<div class="kv"><span class="muted">'+name+'</span><b style="color:'+
+    (row.ok?'var(--acc)':'var(--mut)')+'">'+val+'</b></div>';
+  }
+  var uh=usageRow('Claude',ux.claude)+usageRow('Cursor',ux.cursor)+usageRow('Codex',ux.codex);
+  if(ux.agoSec!=null) uh+='<div class="kv"><span class="muted">Usage updated</span><span>'+ux.agoSec+'s ago</span></div>';
+  $('statusBox').innerHTML+=uh;
  }
  updateWeatherLocStatus(s);
 }).catch(function(e){

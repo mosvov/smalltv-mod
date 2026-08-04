@@ -12,7 +12,7 @@
 // Firmware identity
 // ---------------------------------------------------------------------------
 #define FW_NAME     "smalltv-mod"
-#define FW_VERSION  "2.11.9"
+#define FW_VERSION  "2.12.0"
 
 // Project / update references (shown in the web UI; used by the GitHub self-update)
 #define REPO_URL      "https://github.com/mosvov/smalltv-mod"
@@ -27,7 +27,7 @@
   #define UPDATE_ASSET "smalltv-mod-firmware.bin"
 #endif
 #define GH_API_HOST   "api.github.com"
-#define DAEMON_URL    "https://github.com/giovi321/clawdmeter-daemon"
+#define DAEMON_URL    "https://github.com/mosvov/smalltv-mod/tree/main/tools/ai-usage-daemon"
 
 // ---------------------------------------------------------------------------
 // Display wiring + panel quirks — board-specific, pulled from the right header.

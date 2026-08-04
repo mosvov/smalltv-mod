@@ -23,25 +23,120 @@ bool usageFresh(uint32_t withinMs) {
   return g_usage.valid && (millis() - g_usage.lastOkMs) <= withinMs;
 }
 
-// ---- parse: usage contract -------------------------------------------------
-// { "s":29, "sr":142, "w":4, "wr":9876, "st":"allowed", "ok":true }
-//   s  = 5h utilization %        sr = minutes until 5h reset
-//   w  = 7d utilization %        wr = minutes until 7d reset
-//   st = rate-limit status       ok = false => explicit "no data"
 static void usageFilter(JsonDocument& f) {
-  f["s"] = true; f["sr"] = true; f["w"] = true;
-  f["wr"] = true; f["st"] = true; f["ok"] = true;
+  f["v"] = true;
+  f["ok"] = true;
+  JsonObject cl = f["claude"].to<JsonObject>();
+  cl["ok"] = true;
+  cl["s"] = true;
+  cl["sr"] = true;
+  cl["w"] = true;
+  cl["wr"] = true;
+  cl["st"] = true;
+  cl["pct"] = true;
+  JsonObject cu = f["cursor"].to<JsonObject>();
+  cu["ok"] = true;
+  cu["used"] = true;
+  cu["limit"] = true;
+  cu["pct"] = true;
+  JsonObject co = f["codex"].to<JsonObject>();
+  co["ok"] = true;
+  co["pct"] = true;
+  co["used"] = true;
+  co["limit"] = true;
+  co["unit"] = true;
+  co["label"] = true;
+  f["s"] = true;
+  f["sr"] = true;
+  f["w"] = true;
+  f["wr"] = true;
+  f["st"] = true;
 }
 
-static bool applyUsageDoc(UsageData& d, JsonDocument& doc) {
-  if (doc["ok"].is<bool>() && doc["ok"].as<bool>() == false) return false;
-  if (!doc["s"].is<float>() && !doc["s"].is<int>()) return false;   // require at least session %
+static void formatUsd(float v, char* out, size_t n) {
+  if (v >= 1000.0f) snprintf(out, n, "$%.0fk", v / 1000.0f);
+  else snprintf(out, n, "$%.0f", v);
+}
 
-  d.sessionPct      = constrain(doc["s"].as<float>(), 0.0f, 100.0f);
-  d.weeklyPct       = constrain(doc["w"] | 0.0f, 0.0f, 100.0f);
-  d.sessionResetMin = doc["sr"] | 0;
-  d.weeklyResetMin  = doc["wr"] | 0;
-  strlcpy(d.status, doc["st"] | "", sizeof(d.status));
+static void applyProviderMeter(ProviderMeter& m, JsonObjectConst o) {
+  m.clear();
+  if (o.isNull() || !o["ok"].is<bool>() || !o["ok"].as<bool>()) return;
+  m.ok = true;
+  m.pct = constrain(o["pct"] | 0.0f, 0.0f, 100.0f);
+
+  if (!o["s"].isNull()) {
+    m.pct = constrain(o["s"].as<float>(), 0.0f, 100.0f);
+    snprintf(m.line, sizeof(m.line), "%.0f%%", m.pct);
+    strlcpy(m.sub, "5h", sizeof(m.sub));
+    return;
+  }
+
+  const char* unit = o["unit"] | "";
+  if (strcmp(unit, "usd") == 0 && !o["used"].isNull() && !o["limit"].isNull()) {
+    float used = o["used"] | 0.0f;
+    float limit = o["limit"] | 0.0f;
+    m.pct = constrain(o["pct"] | 0.0f, 0.0f, 100.0f);
+    char u[12], l[12];
+    formatUsd(used, u, sizeof(u));
+    formatUsd(limit, l, sizeof(l));
+    snprintf(m.line, sizeof(m.line), "%s/%s", u, l);
+    strlcpy(m.sub, "spend", sizeof(m.sub));
+    return;
+  }
+
+  if (!o["used"].isNull() && !o["limit"].isNull()) {
+    int used = o["used"] | 0;
+    int limit = o["limit"] | 0;
+    if (limit > 0) m.pct = constrain((float)used / (float)limit * 100.0f, 0.0f, 100.0f);
+    snprintf(m.line, sizeof(m.line), "%d/%d", used, limit);
+    strlcpy(m.sub, "req", sizeof(m.sub));
+    return;
+  }
+
+  snprintf(m.line, sizeof(m.line), "%.0f%%", m.pct);
+  const char* label = o["label"] | "5h";
+  strlcpy(m.sub, label, sizeof(m.sub));
+}
+
+static bool applyUsageDoc(UsageData& d, JsonObjectConst root) {
+  if (root["ok"].is<bool>() && root["ok"].as<bool>() == false && root["v"].isNull())
+    return false;
+
+  d.claude.clear();
+  d.cursor.clear();
+  d.codex.clear();
+
+  bool any = false;
+
+  if (root["v"].is<int>() && root["v"].as<int>() >= 2) {
+    applyProviderMeter(d.claude, root["claude"].as<JsonObjectConst>());
+    applyProviderMeter(d.cursor, root["cursor"].as<JsonObjectConst>());
+    applyProviderMeter(d.codex, root["codex"].as<JsonObjectConst>());
+    any = d.claude.ok || d.cursor.ok || d.codex.ok;
+  }
+
+  // v1 top-level Claude fields
+  if (!any && !root["s"].isNull()) {
+    JsonObjectConst cl = root;
+    applyProviderMeter(d.claude, cl);
+    any = d.claude.ok;
+  }
+
+  if (!any) return false;
+
+  // Legacy fields for mascot burn-rate
+  if (d.claude.ok) {
+    d.sessionPct = d.claude.pct;
+    d.weeklyPct = root["w"] | d.claude.pct;
+    d.sessionResetMin = root["sr"] | 0;
+    d.weeklyResetMin = root["wr"] | 0;
+    strlcpy(d.status, root["st"] | "allowed", sizeof(d.status));
+  } else {
+    d.sessionPct = 0;
+    d.weeklyPct = 0;
+    d.sessionResetMin = d.weeklyResetMin = 0;
+    d.status[0] = 0;
+  }
 
   d.valid = true;
   d.error = false;
@@ -50,21 +145,21 @@ static bool applyUsageDoc(UsageData& d, JsonDocument& doc) {
 }
 
 static bool parseUsage(UsageData& d, Stream& stream) {
-  JsonDocument filter; usageFilter(filter);
+  JsonDocument filter;
+  usageFilter(filter);
   JsonDocument doc;
   if (deserializeJson(doc, stream, DeserializationOption::Filter(filter))) return false;
-  return applyUsageDoc(d, doc);
+  return applyUsageDoc(d, doc.as<JsonObjectConst>());
 }
 
-// Pushed payload (POST /api/usage): same contract, parsed from a String body.
 bool usageApply(const String& body) {
-  JsonDocument filter; usageFilter(filter);
+  JsonDocument filter;
+  usageFilter(filter);
   JsonDocument doc;
   if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) return false;
-  return applyUsageDoc(g_usage, doc);
+  return applyUsageDoc(g_usage, doc.as<JsonObjectConst>());
 }
 
-// ---- one HTTP(S) GET + parse (mirrors StockClient::fetchUrl) ----------------
 static bool fetchUsage(const Settings& s) {
   const String& url = s.usage.usageUrl;
   if (url.length() < 8) return false;
@@ -72,8 +167,8 @@ static bool fetchUsage(const Settings& s) {
 
   std::unique_ptr<NetClient> client;
   if (https) {
-    if (ESP.getFreeHeap() < 20000) return false;   // too little heap for TLS (incl. the 9 KB thunk); skip, don't crash
-    client.reset(platformMakeSecureClient(2048));   // LAN / self-hosted endpoint
+    if (ESP.getFreeHeap() < 20000) return false;
+    client.reset(platformMakeSecureClient(2048));
   } else {
     client.reset(new WiFiClient());
   }
@@ -85,19 +180,21 @@ static bool fetchUsage(const Settings& s) {
   http.addHeader("Accept", "application/json");
 
   int code = http.GET();
-  if (code != HTTP_CODE_OK) { http.end(); return false; }
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    return false;
+  }
 
   bool ok = parseUsage(g_usage, http.getStream());
   http.end();
   return ok;
 }
 
-// ---------------------------------------------------------------------------
 void usageService(const Settings& s) {
   if (!g_inited) usageInit(s);
   if ((int32_t)(millis() - g_nextPollMs) < 0) return;
 
-  if (!fetchUsage(s)) g_usage.error = true;   // keep stale data, flag the error
+  if (!fetchUsage(s)) g_usage.error = true;
 
   g_nextPollMs = millis() + (uint32_t)s.usage.pollSec * 1000UL;
 }

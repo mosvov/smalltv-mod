@@ -1,0 +1,12 @@
+{
+  "poll_sec": 60,
+  "push_interval_sec": 20,
+  "serve_host": "0.0.0.0",
+  "serve_port": 8787,
+  "push_targets": [],
+  "providers": {
+    "claude": true,
+    "cursor": true,
+    "codex": true
+  }
+}
