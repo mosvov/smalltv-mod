@@ -1,4 +1,4 @@
-"""Claude Code OAuth usage via Anthropic rate-limit headers."""
+"""Claude Code usage: OAuth rate limits, or local token totals from session logs."""
 
 from __future__ import annotations
 
@@ -7,11 +7,16 @@ import os
 import subprocess
 import sys
 import time
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
 
 CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
+PROJECTS_DIR = Path.home() / ".claude" / "projects"
+CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.json"
+DEFAULT_LOCAL_DAYS = 30
 TOKEN_ENDPOINT = "https://platform.claude.com/v1/oauth/token"
 TOKEN_REFRESH_MARGIN = 300
 API_URL = "https://api.anthropic.com/v1/messages"
@@ -125,6 +130,127 @@ def read_token() -> str | None:
     return oauth.get("accessToken")
 
 
+def _local_days() -> int:
+    try:
+        if CONFIG_PATH.is_file():
+            cfg = json.loads(CONFIG_PATH.read_text())
+            days = int(cfg.get("claude_local_days") or DEFAULT_LOCAL_DAYS)
+            return max(1, min(days, 90))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return DEFAULT_LOCAL_DAYS
+
+
+def _fmt_compact(n: float) -> str:
+    if n >= 1_000_000:
+        text = f"{n / 1_000_000:.1f}M"
+    elif n >= 1000:
+        text = f"{n / 1000:.1f}K"
+    else:
+        return str(int(n))
+    return text.replace(".0M", "M").replace(".0K", "K")
+
+
+def _aggregate_local_sessions(days: int | None = None) -> dict | None:
+    """Sum token usage from ~/.claude/projects session logs (Bedrock-friendly)."""
+    if not PROJECTS_DIR.is_dir():
+        return None
+
+    period = days or _local_days()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=period)
+    seen: set[str] = set()
+    totals = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "searches": 0}
+    by_model: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
+    )
+
+    for path in PROJECTS_DIR.rglob("*.jsonl"):
+        try:
+            lines = path.read_text().splitlines()
+        except OSError:
+            continue
+        for raw in lines:
+            try:
+                row = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            msg = row.get("message") or {}
+            usage = msg.get("usage")
+            if not usage:
+                continue
+            model = msg.get("model")
+            if not model or model == "<synthetic>":
+                continue
+            ts = row.get("timestamp")
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                except ValueError:
+                    dt = None
+                if dt and dt < cutoff:
+                    continue
+            req_id = row.get("requestId") or row.get("uuid")
+            if not req_id or req_id in seen:
+                continue
+            seen.add(req_id)
+
+            inp = int(usage.get("input_tokens") or 0)
+            out = int(usage.get("output_tokens") or 0)
+            cr = int(usage.get("cache_read_input_tokens") or 0)
+            cc = int(usage.get("cache_creation_input_tokens") or 0)
+            sw = int((usage.get("server_tool_use") or {}).get("web_search_requests") or 0)
+
+            totals["input"] += inp
+            totals["output"] += out
+            totals["cache_read"] += cr
+            totals["cache_create"] += cc
+            totals["searches"] += sw
+            by_model[model]["input"] += inp
+            by_model[model]["output"] += out
+            by_model[model]["cache_read"] += cr
+            by_model[model]["cache_create"] += cc
+
+    tokens = totals["input"] + totals["output"]
+    if tokens <= 0:
+        return None
+
+    models = []
+    for name, m in sorted(by_model.items(), key=lambda kv: -(kv[1]["input"] + kv[1]["output"]))[:4]:
+        models.append(
+            {
+                "model": name,
+                "input": m["input"],
+                "output": m["output"],
+                "cache_read": m["cache_read"],
+                "cache_create": m["cache_create"],
+            }
+        )
+
+    line = _fmt_compact(tokens)
+    sub_parts = []
+    if totals["cache_read"] > 0:
+        sub_parts.append(f"{_fmt_compact(totals['cache_read'])} cached")
+    if totals["searches"] > 0:
+        sub_parts.append(f"{totals['searches']} search" + ("es" if totals["searches"] != 1 else ""))
+    sub = ", ".join(sub_parts) if sub_parts else f"{period}d code"
+
+    return {
+        "ok": True,
+        "mode": "local",
+        "period_days": period,
+        "tokens": tokens,
+        "input": totals["input"],
+        "output": totals["output"],
+        "cache_read": totals["cache_read"],
+        "cache_create": totals["cache_create"],
+        "searches": totals["searches"],
+        "line": line,
+        "sub": sub,
+        "pct": round(min(tokens / 1_000_000 * 100, 100), 1),
+        "models": models,
+    }
+
+
 def _bedrock_mode() -> bool:
     settings = Path.home() / ".claude" / "settings.json"
     try:
@@ -179,12 +305,18 @@ def _poll_headers(token: str) -> dict | None:
 
 
 def fetch() -> dict:
-    if _bedrock_mode() and not read_token():
-        return {"ok": False, "mode": "bedrock"}
     token = read_token()
+    if token:
+        data = _poll_headers(token)
+        if data:
+            return data
+
+    local = _aggregate_local_sessions()
+    if local:
+        return local
+
+    if _bedrock_mode():
+        return {"ok": False, "mode": "bedrock"}
     if not token:
         return {"ok": False, "mode": "no_token"}
-    data = _poll_headers(token)
-    if not data:
-        return {"ok": False, "mode": "api_error"}
-    return data
+    return {"ok": False, "mode": "api_error"}

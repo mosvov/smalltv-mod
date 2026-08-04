@@ -8,7 +8,7 @@ Replaces [clawdmeter-daemon](https://github.com/giovi321/clawdmeter-daemon) for 
 
 | Provider | What you need on this PC |
 |----------|--------------------------|
-| **Claude** | Claude Code logged in (`~/.claude/.credentials.json`) or `CLAUDE_CODE_OAUTH_TOKEN`. Bedrock-only setups show `N/A`. |
+| **Claude** | Claude Code logged in (`~/.claude/.credentials.json`) or `CLAUDE_CODE_OAUTH_TOKEN`. Bedrock setups aggregate token totals from local session logs (`~/.claude/projects/`). |
 | **Cursor** | Cursor IDE logged in (reads `state.vscdb`) or token in `~/Library/Application Support/cursor-usage/config.json` |
 | **Codex** | Codex CLI auth at `~/.codex/auth.json` |
 
@@ -52,9 +52,9 @@ For **push mode**, leave Usage URL blank and run `python daemon.py --push`.
 {
   "v": 2,
   "ok": true,
-  "claude": { "ok": true, "s": 29, "sr": 142, "w": 4, "wr": 9876, "st": "allowed", "pct": 29 },
+  "claude": { "ok": true, "mode": "local", "tokens": 623000, "line": "623K", "sub": "47.3M cached", "pct": 62.3, "period_days": 30 },
   "cursor": { "ok": true, "used": 78, "limit": 1000, "pct": 7.8 },
-  "codex":  { "ok": true, "pct": 11, "used": 563, "limit": 5000, "unit": "usd", "label": "spend" }
+  "codex":  { "ok": true, "pct": 11, "used": 563, "limit": 5000, "unit": "credits", "label": "monthly", "remaining_pct": 89, "reset_label": "Aug 31" }
 }
 ```
 
@@ -67,7 +67,20 @@ Optional `config.json` next to `daemon.py`:
 - `poll_sec` — refresh interval (default 60)
 - `push_interval_sec` — push interval (default 20)
 - `push_targets` — list of device URLs for push mode
-- `providers` — enable/disable `claude`, `cursor`, `codex`
+- `providers` — enable/disable fetching `claude`, `cursor`, `codex`
+- `claude_local_days` — days of local session logs to sum for Bedrock (default 30)
+- `display` — shape the `line` / `sub` labels the device shows:
+  - `claude`: `auto` (tokens + cached), `tokens`, `cached`, or `pct` (OAuth 5h %)
+  - `cursor`: `auto` or `requests` (e.g. `93/1000`), or `pct`
+  - `codex`: `auto` or `credits` (e.g. `563/5k`), or `remaining` (e.g. `89% left`)
+
+Example — show Codex remaining % instead of credits used:
+
+```json
+"display": { "codex": "remaining" }
+```
+
+On the device, **AI usage** tab checkboxes control which rows appear on the 240×240 screen and Status tab.
 
 ## Smoke test
 

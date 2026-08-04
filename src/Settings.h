@@ -70,6 +70,9 @@ struct TickerSettings {
 struct UsageSettings {
   String   usageUrl;      // daemon HTTP endpoint, e.g. http://192.168.1.10:8787/
   uint16_t pollSec;       // refresh period
+  bool     showClaude;    // show Claude row on screen + Status tab
+  bool     showCursor;
+  bool     showCodex;
 
   void setDefaults();
   void toJson(JsonObject o) const;

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import httpx
 
+from display import apply_display
 from providers import claude, codex, cursor
 
 CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
@@ -76,16 +77,16 @@ def merge_payload(cfg: dict) -> dict:
 
     out["ok"] = any_ok
 
-    # v1 backward compatibility for Claude-only firmware
+    # v1 backward compatibility for Claude-only firmware (OAuth rate-limit fields only)
     cl = out.get("claude") or {}
-    if cl.get("ok"):
+    if cl.get("ok") and "s" in cl:
         out["s"] = cl.get("s", 0)
         out["sr"] = cl.get("sr", 0)
         out["w"] = cl.get("w", 0)
         out["wr"] = cl.get("wr", 0)
         out["st"] = cl.get("st", "unknown")
 
-    return out
+    return apply_display(out, cfg)
 
 
 def poll_loop(cfg: dict) -> None:

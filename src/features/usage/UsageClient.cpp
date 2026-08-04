@@ -34,6 +34,11 @@ static void usageFilter(JsonDocument& f) {
   cl["wr"] = true;
   cl["st"] = true;
   cl["pct"] = true;
+  cl["line"] = true;
+  cl["sub"] = true;
+  cl["tokens"] = true;
+  cl["cache_read"] = true;
+  cl["mode"] = true;
   JsonObject cu = f["cursor"].to<JsonObject>();
   cu["ok"] = true;
   cu["used"] = true;
@@ -46,6 +51,8 @@ static void usageFilter(JsonDocument& f) {
   co["limit"] = true;
   co["unit"] = true;
   co["label"] = true;
+  co["reset_label"] = true;
+  co["remaining_pct"] = true;
   f["s"] = true;
   f["sr"] = true;
   f["w"] = true;
@@ -64,6 +71,13 @@ static void applyProviderMeter(ProviderMeter& m, JsonObjectConst o) {
   m.ok = true;
   m.pct = constrain(o["pct"] | 0.0f, 0.0f, 100.0f);
 
+  if (o["line"].is<const char*>()) {
+    strlcpy(m.line, o["line"].as<const char*>(), sizeof(m.line));
+    if (o["sub"].is<const char*>())
+      strlcpy(m.sub, o["sub"].as<const char*>(), sizeof(m.sub));
+    return;
+  }
+
   if (!o["s"].isNull()) {
     m.pct = constrain(o["s"].as<float>(), 0.0f, 100.0f);
     snprintf(m.line, sizeof(m.line), "%.0f%%", m.pct);
@@ -72,6 +86,18 @@ static void applyProviderMeter(ProviderMeter& m, JsonObjectConst o) {
   }
 
   const char* unit = o["unit"] | "";
+  if (strcmp(unit, "credits") == 0 && !o["used"].isNull() && !o["limit"].isNull()) {
+    int used = (int)(o["used"] | 0.0f);
+    int limit = (int)(o["limit"] | 0.0f);
+    m.pct = constrain(o["pct"] | 0.0f, 0.0f, 100.0f);
+    if (limit >= 1000) snprintf(m.line, sizeof(m.line), "%d/%dk", used, limit / 1000);
+    else snprintf(m.line, sizeof(m.line), "%d/%d", used, limit);
+    const char* reset = o["reset_label"] | "";
+    if (reset[0]) snprintf(m.sub, sizeof(m.sub), "r %s", reset);
+    else strlcpy(m.sub, "credits", sizeof(m.sub));
+    return;
+  }
+
   if (strcmp(unit, "usd") == 0 && !o["used"].isNull() && !o["limit"].isNull()) {
     float used = o["used"] | 0.0f;
     float limit = o["limit"] | 0.0f;

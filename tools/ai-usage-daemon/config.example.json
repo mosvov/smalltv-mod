@@ -8,5 +8,11 @@
     "claude": true,
     "cursor": true,
     "codex": true
+  },
+  "claude_local_days": 30,
+  "display": {
+    "claude": "auto",
+    "cursor": "auto",
+    "codex": "auto"
   }
 }
