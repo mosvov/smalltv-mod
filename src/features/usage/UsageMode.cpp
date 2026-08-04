@@ -8,9 +8,14 @@ UsageMode g_usageMode;
 
 #define C_ACCENT  0xDBAA
 #define C_UGREEN  0x7C6B
-#define C_PANEL   0x18E3
 #define C_BARBG   0x2945
 #define C_DIM     0xB574
+
+#define ROW_H     50
+#define BAR_H     14
+#define MARGIN_X  10
+#define LABEL_SZ  1
+#define VALUE_SZ  2
 
 static bool            s_mascotPrimed  = false;
 static const uint16_t* s_mascotPalette = nullptr;
@@ -40,35 +45,50 @@ static uint16_t barColor(float pct) {
   return C_UGREEN;
 }
 
-static void drawProviderRow(Arduino_GFX* gfx, int y, const char* label,
-                            const ProviderMeter& m) {
-  const int x = 8, w = 224, h = 52;
-  gfx->fillRoundRect(x, y, w, h, 6, C_PANEL);
+// Round "497.7K" -> "498K", "105/1000" -> "105/1k" for the small panel.
+static void formatValue(const char* in, char* out, size_t n) {
+  if (!in || !in[0]) { out[0] = 0; return; }
 
-  gfx->setTextSize(1);
-  gfx->setTextColor(C_DIM);
-  gfx->setCursor(x + 10, y + 8);
-  gfx->print(label);
-
-  const char* val = m.ok && m.line[0] ? m.line : "N/A";
-  int tw = gfxTextW(val, 1);
-  gfx->setTextColor(m.ok ? C_WHITE : C_DIM);
-  gfx->setCursor(x + w - tw - 10, y + 8);
-  gfx->print(val);
-
-  int bx = x + 10, by = y + 24, bw = w - 20, bh = 10;
-  gfx->fillRoundRect(bx, by, bw, bh, bh / 2, C_BARBG);
-  if (m.ok) {
-    int fw = (int)(bw * constrain(m.pct, 0.0f, 100.0f) / 100.0f);
-    if (fw >= bh) gfx->fillRoundRect(bx, by, fw, bh, bh / 2, barColor(m.pct));
-    else if (fw > 0) gfx->fillRect(bx, by, fw, bh, barColor(m.pct));
+  const char* k1000 = strstr(in, "/1000");
+  if (k1000) {
+    snprintf(out, n, "%.*s/1k", (int)(k1000 - in), in);
+    return;
   }
 
-  if (m.ok && m.sub[0]) {
-    gfx->setTextSize(1);
-    gfx->setTextColor(C_DIM);
-    gfx->setCursor(x + 10, y + 38);
-    gfx->print(m.sub);
+  float f = 0;
+  char unit = 0;
+  if (sscanf(in, "%f%c", &f, &unit) == 2 && (unit == 'K' || unit == 'M')) {
+    snprintf(out, n, "%d%c", (int)(f + 0.5f), unit);
+    return;
+  }
+
+  strlcpy(out, in, n);
+}
+
+static void drawProviderRow(Arduino_GFX* gfx, int y, const char* label,
+                            const ProviderMeter& m) {
+  const int w = TFT_WIDTH - 2 * MARGIN_X;
+  char val[20];
+  if (m.ok && m.line[0]) formatValue(m.line, val, sizeof(val));
+  else strlcpy(val, "N/A", sizeof(val));
+
+  gfx->setTextSize(LABEL_SZ);
+  gfx->setTextColor(C_DIM);
+  gfx->setCursor(MARGIN_X, y + 2);
+  gfx->print(label);
+
+  gfx->setTextSize(VALUE_SZ);
+  int tw = gfxTextW(val, VALUE_SZ);
+  gfx->setTextColor(m.ok ? C_WHITE : C_DIM);
+  gfx->setCursor(MARGIN_X + w - tw, y);
+  gfx->print(val);
+
+  int bx = MARGIN_X, by = y + 20, bw = w;
+  gfx->fillRoundRect(bx, by, bw, BAR_H, BAR_H / 2, C_BARBG);
+  if (m.ok) {
+    int fw = (int)(bw * constrain(m.pct, 0.0f, 100.0f) / 100.0f);
+    if (fw >= BAR_H) gfx->fillRoundRect(bx, by, fw, BAR_H, BAR_H / 2, barColor(m.pct));
+    else if (fw > 0) gfx->fillRect(bx, by, fw, BAR_H, barColor(m.pct));
   }
 }
 
@@ -78,20 +98,31 @@ static void drawUsage(const UsageData& u, const UsageSettings& cfg) {
   s_mascotPrimed = false;
   gfx->fillScreen(C_BLACK);
 
-  gfx->setTextSize(2);
-  gfx->setTextColor(C_WHITE);
-  gfx->setCursor(12, 6);
-  gfx->print("AI USAGE");
-
   if (!u.valid) {
     gfxDrawCentered(u.error ? "daemon error" : "waiting...", 120, 2, C_DIM);
     return;
   }
 
-  int y = 28;
-  if (cfg.showClaude) { drawProviderRow(gfx, y, "CLAUDE", u.claude); y += 58; }
-  if (cfg.showCursor) { drawProviderRow(gfx, y, "CURSOR", u.cursor); y += 58; }
-  if (cfg.showCodex)  { drawProviderRow(gfx, y, "CODEX",  u.codex); }
+  uint8_t rows = 0;
+  if (cfg.showClaude) rows++;
+  if (cfg.showCursor) rows++;
+  if (cfg.showCodex)  rows++;
+
+  int y = (TFT_HEIGHT - (int)rows * ROW_H) / 2;
+  if (y < 4) y = 4;
+
+  if (cfg.showClaude) { drawProviderRow(gfx, y, "CL", u.claude); y += ROW_H; }
+  if (cfg.showCursor) { drawProviderRow(gfx, y, "CU", u.cursor); y += ROW_H; }
+  if (cfg.showCodex)  { drawProviderRow(gfx, y, "CX", u.codex); }
+
+  if (cfg.showCodex && u.codex.ok && u.codex.sub[0] == 'r' && u.codex.sub[2]) {
+    const char* reset = u.codex.sub + 2;
+    gfx->setTextSize(1);
+    gfx->setTextColor(C_DIM);
+    int rw = gfxTextW(reset, 1);
+    gfx->setCursor((TFT_WIDTH - rw) / 2, TFT_HEIGHT - 14);
+    gfx->print(reset);
+  }
 }
 
 static void drawMascot(const uint8_t* cells, const uint16_t* palette, bool restart) {
