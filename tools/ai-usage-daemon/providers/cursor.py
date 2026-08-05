@@ -96,7 +96,7 @@ def _parse_usage_summary(data: dict) -> dict | None:
         if used is not None and limit:
             used_i, limit_i = int(used), int(limit)
             pct = round(used_i / limit_i * 100, 1) if limit_i else 0.0
-            return {"ok": True, "used": used_i, "limit": limit_i, "pct": pct}
+            return {"ok": True, "used": used_i, "limit": limit_i, "pct": pct, "label": "monthly"}
 
     for key in ("gpt4", "premium", "default"):
         block = data.get(key)
@@ -104,7 +104,7 @@ def _parse_usage_summary(data: dict) -> dict | None:
             used = int(block.get("numRequests") or block.get("numRequestUsage") or 0)
             limit = int(block.get("maxRequestUsage") or 0)
             if limit > 0:
-                return {"ok": True, "used": used, "limit": limit, "pct": round(used / limit * 100, 1)}
+                return {"ok": True, "used": used, "limit": limit, "pct": round(used / limit * 100, 1), "label": "monthly"}
 
     auto = data.get("autoPercentUsed")
     if auto is not None:
