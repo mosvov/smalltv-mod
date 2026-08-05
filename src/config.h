@@ -12,7 +12,7 @@
 // Firmware identity
 // ---------------------------------------------------------------------------
 #define FW_NAME     "smalltv-mod"
-#define FW_VERSION  "2.13.2"
+#define FW_VERSION  "2.13.4"
 
 // Project / update references (shown in the web UI; used by the GitHub self-update)
 #define REPO_URL      "https://github.com/mosvov/smalltv-mod"
@@ -92,8 +92,9 @@
 
 // Claude usage mode: once data stops arriving for this long (PC asleep, daemon
 // stopped, network down) the screen switches from the stats to the idle mascot
-// animation. Effective timeout also scales with the poll period (see main.cpp).
+// animation. Pull mode scales with pollSec; push mode uses USAGE_PUSH_STALE_MS.
 #define USAGE_STALE_GRACE_MS  20000UL
+#define USAGE_PUSH_STALE_MS   (2UL * 60UL * 60UL * 1000UL)  // 2h — tolerate missed cron pushes
 
 // ---------------------------------------------------------------------------
 // Data source (stock mode)

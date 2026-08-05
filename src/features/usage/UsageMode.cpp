@@ -11,6 +11,9 @@ UsageMode g_usageMode;
 #define C_BARBG   0x2945
 #define C_DIM     0xB574
 
+#define C_PACE    0xFFFF
+#define C_AHEAD   0x4208   // dim green tint for under-pace headroom
+
 #define ROW_H     56
 #define BAR_H     20
 #define MARGIN_X  10
@@ -65,6 +68,41 @@ static void formatValue(const char* in, char* out, size_t n) {
   strlcpy(out, in, n);
 }
 
+static void fillBarSegment(Arduino_GFX* gfx, int bx, int by, int x0, int x1, int h, uint16_t col) {
+  if (x1 <= x0) return;
+  int w = x1 - x0;
+  int r = h / 2;
+  if (w >= h) gfx->fillRoundRect(bx + x0, by, w, h, r, col);
+  else gfx->fillRect(bx + x0, by, w, h, col);
+}
+
+static void drawPaceBar(Arduino_GFX* gfx, int bx, int by, int bw, const ProviderMeter& m) {
+  gfx->fillRoundRect(bx, by, bw, BAR_H, BAR_H / 2, C_BARBG);
+  if (!m.ok) return;
+
+  float usePct = constrain(m.pct, 0.0f, 100.0f);
+  int useW = (int)(bw * usePct / 100.0f);
+  bool hasPace = m.pacePct >= 0.0f;
+  int paceW = hasPace ? (int)(bw * constrain(m.pacePct, 0.0f, 100.0f) / 100.0f) : 0;
+
+  if (hasPace && paceW > 0) {
+    if (useW <= paceW) {
+      fillBarSegment(gfx, bx, by, 0, useW, BAR_H, C_UGREEN);
+      if (useW < paceW)
+        fillBarSegment(gfx, bx, by, useW, paceW, BAR_H, C_AHEAD);
+    } else {
+      fillBarSegment(gfx, bx, by, 0, paceW, BAR_H, C_UGREEN);
+      fillBarSegment(gfx, bx, by, paceW, useW, BAR_H, C_ACCENT);
+    }
+    if (paceW < bw - 1) {
+      gfx->drawFastVLine(bx + paceW, by + 2, BAR_H - 4, C_PACE);
+      gfx->drawFastVLine(bx + paceW + 1, by + 2, BAR_H - 4, C_PACE);
+    }
+  } else if (useW > 0) {
+    fillBarSegment(gfx, bx, by, 0, useW, BAR_H, barColor(usePct));
+  }
+}
+
 static void drawProviderRow(Arduino_GFX* gfx, int y, const char* label,
                             const ProviderMeter& m) {
   const int w = TFT_WIDTH - 2 * MARGIN_X;
@@ -84,12 +122,7 @@ static void drawProviderRow(Arduino_GFX* gfx, int y, const char* label,
   gfx->print(val);
 
   int bx = MARGIN_X, by = y + 22, bw = w;
-  gfx->fillRoundRect(bx, by, bw, BAR_H, BAR_H / 2, C_BARBG);
-  if (m.ok) {
-    int fw = (int)(bw * constrain(m.pct, 0.0f, 100.0f) / 100.0f);
-    if (fw >= BAR_H) gfx->fillRoundRect(bx, by, fw, BAR_H, BAR_H / 2, barColor(m.pct));
-    else if (fw > 0) gfx->fillRect(bx, by, fw, BAR_H, barColor(m.pct));
-  }
+  drawPaceBar(gfx, bx, by, bw, m);
 }
 
 static void drawUsage(const UsageData& u, const UsageSettings& cfg) {
@@ -153,8 +186,7 @@ void UsageMode::invalidate(const Settings& s) {
   needRender_ = true;
   showingMascot_ = false;
   usageRenderedOk_ = 0xFFFFFFFF;
-  usageInit(s);
-  usageForceRefresh();
+  if (s.usage.usageUrl.length() >= 8) usageForceRefresh();
 }
 
 void UsageMode::service(const Settings& s) {
@@ -167,7 +199,12 @@ void UsageMode::service(const Settings& s) {
     if (u.claude.ok) mascotSample(u.claude.pct);
   }
 
-  uint32_t staleMs = (uint32_t)s.usage.pollSec * 1000UL * 2UL + USAGE_STALE_GRACE_MS;
+  uint32_t staleMs;
+  if (s.usage.usageUrl.length() >= 8) {
+    staleMs = (uint32_t)s.usage.pollSec * 1000UL * 2UL + USAGE_STALE_GRACE_MS;
+  } else {
+    staleMs = USAGE_PUSH_STALE_MS;
+  }
 
   if (usageFresh(staleMs)) {
     if (showingMascot_) { showingMascot_ = false; needRender_ = true; }

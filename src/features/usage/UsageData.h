@@ -5,12 +5,14 @@
 struct ProviderMeter {
   bool  ok;
   float pct;              // 0..100 for bar width
+  float pacePct;          // expected linear % through billing period; < 0 = N/A
   char  line[20];         // e.g. "78/1000", "$563/$5k", "29%"
   char  sub[12];          // e.g. "5h", "req", "spend"
 
   void clear() {
     ok = false;
     pct = 0;
+    pacePct = -1.0f;
     line[0] = 0;
     sub[0] = 0;
   }

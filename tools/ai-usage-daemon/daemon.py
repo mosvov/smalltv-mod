@@ -14,6 +14,7 @@ from pathlib import Path
 import httpx
 
 from display import apply_display
+from pace import attach_pace
 from providers import claude, codex, cursor
 
 CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
@@ -77,6 +78,13 @@ def merge_payload(cfg: dict) -> dict:
 
     out["ok"] = any_ok
 
+    out = apply_display(out, cfg)
+
+    for key in ("claude", "cursor", "codex"):
+        block = out.get(key)
+        if isinstance(block, dict):
+            out[key] = attach_pace(block)
+
     # v1 backward compatibility for Claude-only firmware (OAuth rate-limit fields only)
     cl = out.get("claude") or {}
     if cl.get("ok") and "s" in cl:
@@ -86,7 +94,7 @@ def merge_payload(cfg: dict) -> dict:
         out["wr"] = cl.get("wr", 0)
         out["st"] = cl.get("st", "unknown")
 
-    return apply_display(out, cfg)
+    return out
 
 
 def poll_loop(cfg: dict) -> None:
